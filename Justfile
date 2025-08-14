@@ -6,6 +6,9 @@ build mode="debug":
     mkdir -p bin
     cargo build --workspace {{ if mode == "release" { "--release" } else { "" } }}
     cp target/{{ mode }}/wassette bin/
+
+build-frontend:
+    cd frontend && npm install && npm run build
     
 build-examples mode="debug":
     mkdir -p bin

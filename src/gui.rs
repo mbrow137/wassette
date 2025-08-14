@@ -9,10 +9,14 @@ use anyhow::{Context, Result};
 use axum::{
     extract::{Path, State}, 
     http::{StatusCode, Uri},
-    response::{Html, IntoResponse, Response},
+    response::{Html, IntoResponse, Response, Sse},
     routing::{get, post, delete},
     Json, Router
 };
+use axum::response::sse::{Event, KeepAlive};
+use tokio_stream::{wrappers::BroadcastStream, StreamExt};
+use std::convert::Infallible;
+use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio::net::TcpListener;
@@ -28,6 +32,7 @@ const GUI_BIND_ADDRESS: &str = "127.0.0.1:9002";
 pub struct GuiState {
     lifecycle_manager: LifecycleManager,
     event_log: Arc<tokio::sync::RwLock<Vec<ActivityEvent>>>,
+    event_sender: Arc<tokio::sync::broadcast::Sender<ActivityEvent>>,
 }
 
 /// Activity event for the GUI feed
@@ -63,20 +68,25 @@ pub struct PermissionInfo {
 
 impl GuiState {
     pub fn new(lifecycle_manager: LifecycleManager) -> Self {
+        let (event_sender, _) = tokio::sync::broadcast::channel(100);
         Self {
             lifecycle_manager,
             event_log: Arc::new(tokio::sync::RwLock::new(Vec::new())),
+            event_sender: Arc::new(event_sender),
         }
     }
 
     pub async fn add_event(&self, event: ActivityEvent) {
         let mut events = self.event_log.write().await;
-        events.push(event);
+        events.push(event.clone());
         // Keep only last 50 events
         let events_len = events.len();
         if events_len > 50 {
             events.drain(0..events_len - 50);
         }
+        
+        // Send to SSE subscribers
+        let _ = self.event_sender.send(event);
     }
 }
 
@@ -113,6 +123,7 @@ fn create_router(state: GuiState) -> Router {
         .route("/api/components/{id}/permissions", get(api_get_permissions))
         .route("/api/components/{id}/permissions", post(api_update_permissions))
         .route("/api/events", get(api_get_events))
+        .route("/api/events/stream", get(api_events_stream))
         .route("/api/tools", get(api_list_tools))
         .route("/assets/{*path}", get(serve_static))
         .layer(CorsLayer::permissive())
@@ -121,7 +132,7 @@ fn create_router(state: GuiState) -> Router {
 
 /// Serve the main HTML page
 async fn serve_index() -> Html<&'static str> {
-    Html(include_str!("gui/index.html"))
+    Html(include_str!("gui_dist/index.html"))
 }
 
 /// Serve static assets
@@ -133,14 +144,14 @@ async fn serve_static(uri: Uri) -> Response {
             (
                 StatusCode::OK,
                 [("content-type", "text/css")],
-                include_str!("gui/style.css")
+                include_str!("gui_dist/style.css")
             ).into_response()
         }
-        "script.js" => {
+        "index.js" => {
             (
                 StatusCode::OK,
                 [("content-type", "application/javascript")],
-                include_str!("gui/script.js")
+                include_str!("gui_dist/index.js")
             ).into_response()
         }
         _ => (StatusCode::NOT_FOUND, "Not found").into_response()
@@ -287,6 +298,32 @@ async fn api_update_permissions(
 async fn api_get_events(State(state): State<GuiState>) -> Json<Vec<ActivityEvent>> {
     let events = state.event_log.read().await;
     Json(events.clone())
+}
+
+/// Server-Sent Events endpoint for real-time updates
+async fn api_events_stream(State(state): State<GuiState>) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
+    let receiver = state.event_sender.subscribe();
+    
+    let stream = BroadcastStream::new(receiver).filter_map(|result| {
+        match result {
+            Ok(event) => {
+                let event_data = serde_json::to_string(&json!({
+                    "type": event.event_type,
+                    "id": event.id,
+                    "timestamp": event.timestamp,
+                    "component_id": event.component_id,
+                    "description": event.description,
+                    "success": event.success,
+                    "details": event.details
+                })).unwrap_or_default();
+                
+                Some(Ok(Event::default().data(event_data)))
+            }
+            Err(_) => None, // Channel closed or lagged
+        }
+    });
+    
+    Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(10)))
 }
 
 /// API endpoint to list tools

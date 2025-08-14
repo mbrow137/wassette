@@ -4,3 +4,7 @@
 /result
 # Env and .envrc files
 .env*
+# Frontend build artifacts
+frontend/node_modules/
+frontend/dist/
+src/gui_dist/

@@ -67,6 +67,7 @@ axum = "0.8"
 tower = "0.5"
 tower-http = { version = "0.6", features = ["fs", "cors"] }
 mime_guess = "2.0"
+tokio-stream = { workspace = true, features = ["sync"] }
 
 [[bin]]
 name = "wassette"
