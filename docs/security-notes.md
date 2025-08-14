@@ -484,8 +484,252 @@ pub async fn grant_permission(details: &Value) -> Result<()> {
 
 #### Zero-Trust Architecture
 - **Continuous Verification**: Ongoing validation of component behavior
-- **Micro-Segmentation**: Fine-grained network access controls
+- **Micro-Segmentation**: Fine-grained network access controls (detailed below)
 - **Dynamic Policy Enforcement**: Runtime policy adaptation based on threat intelligence
+
+##### Micro-Segmentation Implementation Details
+
+**Fine-grained network access controls** in Wassette would extend beyond the current host-based filtering to provide comprehensive network isolation and traffic management:
+
+**Current Implementation:**
+```yaml
+# Basic host filtering (current capability)
+permissions:
+  network:
+    allow:
+      - host: "api.openweathermap.org"
+      - host: "*.github.com"
+    deny:
+      - cidr: "10.0.0.0/8"  # Block internal networks
+```
+
+**Enhanced Micro-Segmentation Features:**
+
+**1. Port-Level Access Controls**
+```yaml
+permissions:
+  network:
+    allow:
+      - host: "api.service.com"
+        ports: [443, 80]  # HTTPS/HTTP only
+        protocols: ["tcp"]
+      - host: "dns.google.com"
+        ports: [53]
+        protocols: ["udp", "tcp"]  # DNS over UDP/TCP
+    deny:
+      - host: "*.internal.com"
+        ports: [22, 3389]  # Block SSH/RDP
+```
+
+**2. Time-Based Access Controls**
+```yaml
+permissions:
+  network:
+    allow:
+      - host: "business-hours-api.com"
+        schedule:
+          days: ["mon", "tue", "wed", "thu", "fri"]
+          hours: "09:00-17:00"
+          timezone: "UTC"
+      - host: "backup.service.com"
+        schedule:
+          hours: "02:00-04:00"  # Backup window only
+```
+
+**3. Bandwidth and Rate Limiting**
+```yaml
+permissions:
+  network:
+    allow:
+      - host: "cdn.example.com"
+        limits:
+          requests_per_minute: 100
+          bandwidth_mbps: 10
+          concurrent_connections: 5
+      - host: "heavy-api.com"
+        limits:
+          requests_per_hour: 1000
+          max_response_size_mb: 50
+```
+
+**4. Inter-Component Network Isolation**
+```yaml
+# Component-to-component communication controls
+inter_component:
+  policy: "deny_all"  # Default deny
+  allow:
+    - from: "weather-component-id"
+      to: "geocoding-component-id"
+      ports: [8080]
+      protocols: ["http"]
+    - from: "data-processor-*"  # Wildcard component matching
+      to: "database-connector"
+      encrypted: true  # Require mTLS
+```
+
+**5. Protocol-Specific Filtering**
+```yaml
+permissions:
+  network:
+    protocols:
+      http:
+        allow:
+          - host: "rest-api.com"
+            methods: ["GET", "POST"]
+            paths: ["/api/v1/*"]
+            headers:
+              required: ["Authorization", "Content-Type"]
+              forbidden: ["X-Admin-Token"]
+        max_redirects: 3
+        timeout_seconds: 30
+      
+      websocket:
+        allow:
+          - host: "realtime.service.com"
+            subprotocols: ["chat.v1", "data.v2"]
+            max_frame_size_kb: 1024
+      
+      grpc:
+        allow:
+          - host: "grpc.service.com"
+            services: ["weather.WeatherService"]
+            methods: ["GetCurrentWeather", "GetForecast"]
+```
+
+**6. Geographic and Network Context Controls**
+```yaml
+permissions:
+  network:
+    geographic:
+      allowed_countries: ["US", "CA", "EU"]  # Block traffic to restricted regions
+      blocked_asn: [12345, 67890]  # Block specific network providers
+    
+    context_aware:
+      deny_tor_exit_nodes: true
+      deny_known_vpn_ranges: true
+      require_reverse_dns: true
+      block_cloud_metadata_services: true  # Prevent 169.254.169.254
+```
+
+**7. Dynamic Traffic Analysis and Anomaly Detection**
+```yaml
+permissions:
+  network:
+    monitoring:
+      anomaly_detection:
+        enabled: true
+        baseline_learning_period: "7d"
+        alert_thresholds:
+          unusual_hosts: 0.8  # Alert if >80% traffic to new hosts
+          traffic_spike: 5.0   # Alert if traffic >5x baseline
+          off_hours_activity: true
+      
+      traffic_analysis:
+        log_all_requests: true
+        analyze_payload_patterns: true
+        detect_exfiltration_patterns: true
+```
+
+**8. Network Segmentation Zones**
+```yaml
+# Define network security zones
+network_zones:
+  dmz:
+    description: "External-facing services"
+    allowed_outbound: ["internet"]
+    required_encryption: true
+  
+  internal:
+    description: "Internal business logic"
+    allowed_outbound: ["dmz", "database"]
+    monitoring_level: "high"
+  
+  database:
+    description: "Data layer"
+    allowed_outbound: []  # No external access
+    encryption_required: true
+
+# Assign components to zones
+component_zones:
+  "weather-api-*": "dmz"
+  "data-processor-*": "internal"
+  "db-connector": "database"
+```
+
+**9. Advanced Threat Prevention**
+```yaml
+permissions:
+  network:
+    threat_prevention:
+      dns:
+        use_secure_resolvers: ["1.1.1.1", "8.8.8.8"]
+        block_dns_over_https_bypass: true
+        monitor_dga_domains: true  # Detect algorithmically generated domains
+      
+      ssl_tls:
+        min_version: "1.3"
+        cipher_allowlist: ["ECDHE-RSA-AES256-GCM-SHA384"]
+        certificate_pinning:
+          - host: "critical-api.com"
+            pins: ["sha256:ABC123...", "sha256:DEF456..."]
+        block_self_signed_certs: true
+      
+      application_layer:
+        detect_command_injection: true
+        block_sql_injection_patterns: true
+        monitor_large_uploads: true
+        scan_download_content: true
+```
+
+**10. Integration with Network Security Infrastructure**
+```yaml
+# Integration with enterprise security tools
+security_integrations:
+  siem:
+    enabled: true
+    endpoint: "https://siem.company.com/api/events"
+    auth_token: "${SIEM_API_KEY}"
+  
+  network_firewall:
+    sync_policies: true
+    enforce_at_border: true
+  
+  threat_intelligence:
+    feeds: ["commercial_ti", "internal_ti"]
+    auto_block_iocs: true
+    quarantine_suspicious_traffic: true
+```
+
+**Implementation Architecture:**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Wassette Host System                     │
+├─────────────────────────────────────────────────────────────┤
+│  ┌─────────────────┐  ┌──────────────────────────────────┐  │
+│  │ Network Policy  │  │     Traffic Analytics Engine     │  │
+│  │   Engine        │  │  • Baseline Learning             │  │
+│  │ • Zone Rules    │  │  • Anomaly Detection             │  │
+│  │ • Rate Limits   │  │  • Threat Intelligence           │  │
+│  │ • Time Controls │  │  • Behavior Analysis             │  │
+│  └─────────────────┘  └──────────────────────────────────┘  │
+├─────────────────────────────────────────────────────────────┤
+│  ┌─────────────────┐  ┌─────────────────┐  ┌──────────────┐  │
+│  │  Component A    │  │  Component B    │  │ Component C  │  │
+│  │  Zone: DMZ      │  │ Zone: Internal  │  │Zone: Database│  │
+│  │  • Internet OK  │  │ • DMZ + DB only │  │ • No external│  │
+│  │  • Rate limited │  │ • Full logging  │  │ • Encrypted  │  │
+│  └─────────────────┘  └─────────────────┘  └──────────────┘  │
+├─────────────────────────────────────────────────────────────┤
+│               Enhanced WASI HTTP Filter                     │
+│  • Port-level filtering     • Protocol inspection          │
+│  • Geographic blocking     • Certificate pinning           │
+│  • Rate limiting           • Anomaly detection              │
+│  • Time-based controls    • Threat intelligence            │
+└─────────────────────────────────────────────────────────────┘
+```
+
+This micro-segmentation approach transforms Wassette from basic host filtering to a comprehensive zero-trust network security platform, providing defense-in-depth protection while maintaining the flexibility and performance required for AI agent operations.
 
 #### AI-Powered Security
 - **Behavioral Analysis**: ML-based detection of anomalous component behavior
