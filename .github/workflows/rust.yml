@@ -131,6 +131,8 @@ jobs:
       uses: taiki-e/install-action@331a600f1b10a3fed8dc56f925012bede91ae51f # v2.47.11
       with:
         tool: cargo-llvm-cov
+    - name: Build project before coverage
+      run: just build
     - name: Generate code coverage
       run: cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info --ignore-run-fail
     - name: Upload coverage reports to Codecov
