@@ -27,6 +27,7 @@ use tracing_subscriber::layer::SubscriberExt as _;
 use tracing_subscriber::util::SubscriberInitExt as _;
 
 mod config;
+mod gui;
 
 use std::sync::LazyLock;
 
@@ -105,6 +106,11 @@ struct Serve {
     #[arg(long)]
     #[serde(skip)]
     http: bool,
+
+    /// Enable GUI web interface alongside the MCP server
+    #[arg(long)]
+    #[serde(skip)]
+    gui: bool,
 }
 
 /// A security-oriented runtime that runs WebAssembly Components via MCP.
@@ -260,10 +266,23 @@ async fn main() -> Result<()> {
 
             let lifecycle_manager = LifecycleManager::new(&config.plugin_dir).await?;
 
-            let server = McpServer::new(lifecycle_manager);
+            let server = McpServer::new(lifecycle_manager.clone());
+
+            // Start GUI server if enabled
+            if cfg.gui {
+                let gui_lifecycle_manager = lifecycle_manager.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = gui::start_gui_server(gui_lifecycle_manager).await {
+                        tracing::error!("GUI server failed: {}", e);
+                    }
+                });
+            }
 
             if use_stdio_transport {
                 tracing::info!("Starting MCP server with stdio transport");
+                if cfg.gui {
+                    tracing::info!("GUI available at http://127.0.0.1:9002");
+                }
                 let transport = stdio_transport();
                 let running_service = serve_server(server, transport).await?;
 
@@ -274,6 +293,9 @@ async fn main() -> Result<()> {
                     "Starting MCP server on {} with HTTP transport",
                     BIND_ADDRESS
                 );
+                if cfg.gui {
+                    tracing::info!("GUI available at http://127.0.0.1:9002");
+                }
                 let ct = SseServer::serve(BIND_ADDRESS.parse().unwrap())
                     .await?
                     .with_service(move || server.clone());
