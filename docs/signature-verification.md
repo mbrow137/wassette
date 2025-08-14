@@ -1,12 +1,23 @@
-# OCI Signature Verification
+# OCI Signature Verification Framework
 
-Wassette supports cryptographic signature verification for OCI artifacts using cosign/sigstore to ensure the integrity and authenticity of loaded components.
+Wassette includes a configurable framework for OCI signature verification that will support cosign/sigstore to ensure the integrity and authenticity of loaded components.
+
+## Current Status
+
+**This is a framework implementation** - The configuration and integration points are fully implemented, but the actual cryptographic verification using cosign/sigstore will be added in a future release. Currently:
+
+- Configuration is fully functional and validated
+- OCI loading integration is complete and enforces verification policies
+- Trust root configuration is validated
+- Error handling and user feedback is implemented
+- The system acts as a secure placeholder that can be enhanced with full verification
 
 ## Security Model
 
-**By default, signature verification is ENABLED and mandatory.** This means:
-- All OCI artifacts (`oci://` scheme) must be signed to be loaded
-- Unsigned components will be rejected
+**By default, signature verification enforcement is ENABLED.** This means:
+- When enforcement is enabled with proper trust configuration, components will be allowed (placeholder behavior)
+- When enforcement is enabled without trust configuration, loading will fail securely
+- When enforcement is disabled, all OCI artifacts are allowed
 - Local files (`file://`) and HTTPS downloads are not subject to signature verification
 
 ## Configuration
@@ -79,44 +90,34 @@ allow_fulcio = true
 
 **Warning:** Only enable Fulcio in trusted environments, as it allows any valid sigstore signature.
 
-## Disabling Verification (NOT RECOMMENDED)
+## Disabling Verification
 
-For development or testing purposes only, you can disable signature verification:
+For environments where signature verification is not required, you can disable enforcement:
 
 ```toml
 [signature_verification]
 enforce = false
 ```
 
-**Security Warning:** Disabling signature verification allows loading of unsigned, potentially malicious components. Only disable in trusted development environments.
+**Note:** When enforcement is disabled, all OCI artifacts will be allowed regardless of signature status.
 
-## Signing Components
+## Future Implementation
 
-To sign your components for use with Wassette:
+The full cosign/sigstore integration will include:
 
-1. **Using cosign CLI:**
-   ```bash
-   # Sign with a private key
-   cosign sign --key cosign.key oci://registry.example.com/my-component:latest
-   
-   # Sign with keyless (Fulcio)
-   cosign sign oci://registry.example.com/my-component:latest
-   ```
-
-2. **Using GitHub Actions:**
-   ```yaml
-   - name: Sign container image
-     run: |
-       cosign sign --yes oci://registry.example.com/my-component:${{ github.sha }}
-   ```
+1. **Cryptographic Verification**: Actual signature validation using cosign/sigstore
+2. **Multiple Signature Formats**: Support for various signing formats
+3. **Certificate Chain Validation**: Full certificate path validation for Fulcio
+4. **Policy Constraints**: Advanced verification policies and constraints
+5. **Performance Optimization**: Caching and efficient verification processes
 
 ## Error Messages
 
-Common signature verification errors:
+Current error messages you may encounter:
 
-- `Signature verification failed: No valid signatures found` - The OCI artifact is not signed
-- `No trust roots configured and Fulcio is disabled` - No trusted keys/certificates configured
-- `Failed to verify image signature` - Signature exists but doesn't match trusted keys
+- `No trust roots configured and Fulcio is disabled` - No trusted keys/certificates configured when enforcement is enabled
+- `Signature verification placeholder: allowing [reference]` - Indicates the framework is active but full verification is not yet implemented
+- `Signature verification is enabled but no trust configuration provided` - Trust configuration is required when enforcement is enabled
 
 ## Best Practices
 
