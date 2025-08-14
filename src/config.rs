@@ -27,6 +27,45 @@ pub struct Config {
     /// Directory where plugins are stored
     #[serde(default = "default_plugin_dir")]
     pub plugin_dir: PathBuf,
+    /// Signature verification configuration for OCI artifacts
+    #[serde(default)]
+    pub signature_verification: SignatureVerificationConfig,
+}
+
+/// Configuration for OCI signature verification
+#[derive(Debug, Deserialize, Serialize)]
+pub struct SignatureVerificationConfig {
+    /// Whether to enforce signature verification for OCI artifacts
+    #[serde(default = "default_enforce_verification")]
+    pub enforce: bool,
+    /// Trusted public keys for signature verification (PEM format)
+    #[serde(default)]
+    pub trusted_keys: Vec<String>,
+    /// Trusted certificate paths for verification
+    #[serde(default)]
+    pub trusted_certs: Vec<PathBuf>,
+    /// Allow Fulcio-issued certificates from the public instance
+    #[serde(default = "default_allow_fulcio")]
+    pub allow_fulcio: bool,
+}
+
+impl Default for SignatureVerificationConfig {
+    fn default() -> Self {
+        Self {
+            enforce: default_enforce_verification(),
+            trusted_keys: Vec::new(),
+            trusted_certs: Vec::new(),
+            allow_fulcio: default_allow_fulcio(),
+        }
+    }
+}
+
+fn default_enforce_verification() -> bool {
+    true // Secure by default - reject unsigned components
+}
+
+fn default_allow_fulcio() -> bool {
+    false // Conservative default - require explicit trust
 }
 
 impl Config {
@@ -156,6 +195,11 @@ plugin_dir = "/config/plugin/dir"
 
         let toml_content = r#"
 plugin_dir = "/config/plugin/dir"
+
+[signature_verification]
+enforce = false
+trusted_keys = ["key1", "key2"]
+allow_fulcio = true
 "#;
         fs::write(&config_file, toml_content).unwrap();
 
@@ -163,6 +207,9 @@ plugin_dir = "/config/plugin/dir"
             .expect("Failed to create config");
 
         assert_eq!(config.plugin_dir, PathBuf::from("/config/plugin/dir"));
+        assert_eq!(config.signature_verification.enforce, false);
+        assert_eq!(config.signature_verification.trusted_keys.len(), 2);
+        assert_eq!(config.signature_verification.allow_fulcio, true);
     }
 
     #[test]
@@ -183,7 +230,7 @@ plugin_dir = "/config/plugin/dir"
         let temp_dir = TempDir::new().unwrap();
         let config_file = temp_dir.path().join("config.toml");
 
-        // Config file only sets plugin_dir, not policy_file
+        // Config file only sets plugin_dir, not signature verification
         let toml_content = r#"
 plugin_dir = "/config/plugin/dir"
 "#;
@@ -194,6 +241,11 @@ plugin_dir = "/config/plugin/dir"
 
         // plugin_dir should come from config file
         assert_eq!(config.plugin_dir, PathBuf::from("/config/plugin/dir"));
+        
+        // signature_verification should use defaults (enforce=true, secure by default)
+        assert_eq!(config.signature_verification.enforce, true);
+        assert_eq!(config.signature_verification.trusted_keys.len(), 0);
+        assert_eq!(config.signature_verification.allow_fulcio, false);
     }
 
     #[test]

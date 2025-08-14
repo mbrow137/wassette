@@ -28,13 +28,15 @@ use wasmtime_wasi_config::WasiConfig;
 mod http;
 mod loader;
 mod policy_internal;
+mod signature_verification;
+mod signature_verification_tests;
 mod wasistate;
 
 pub use http::WassetteWasiState;
 use loader::{ComponentResource, PolicyResource};
 use policy_internal::PolicyRegistry;
 pub use policy_internal::{PermissionGrantRequest, PermissionRule, PolicyInfo};
-use wasistate::WasiState;
+use signature_verification::{SignatureVerifier, VerificationConfig, SignatureVerificationConfig as SigVerConfig};
 pub use wasistate::{create_wasi_state_template_from_policy, WasiStateTemplate};
 
 const DOWNLOADS_DIR: &str = "downloads";
@@ -129,8 +131,10 @@ pub struct LifecycleManager {
     registry: Arc<RwLock<ComponentRegistry>>,
     policy_registry: Arc<RwLock<PolicyRegistry>>,
     oci_client: Arc<oci_wasm::WasmClient>,
+    oci_client_raw: Arc<oci_client::Client>,
     http_client: reqwest::Client,
     plugin_dir: PathBuf,
+    signature_verifier: Arc<SignatureVerifier>,
 }
 
 /// A representation of a loaded component instance. It contains both the base component info and a
@@ -146,10 +150,41 @@ impl LifecycleManager {
     /// This is the primary way to create a LifecycleManager for most use cases
     #[instrument(skip_all, fields(plugin_dir = %plugin_dir.as_ref().display()))]
     pub async fn new(plugin_dir: impl AsRef<Path>) -> Result<Self> {
-        Self::new_with_clients(
+        // Use default signature verification configuration (enforce by default)
+        let default_verification_config = VerificationConfig {
+            enforce: true,
+            trusted_keys: Vec::new(),
+            trusted_certs: Vec::new(),
+            allow_fulcio: false,
+        };
+        
+        Self::new_with_verification_config(
             plugin_dir,
             oci_client::Client::default(),
             reqwest::Client::default(),
+            default_verification_config,
+        )
+        .await
+    }
+
+    /// Creates a lifecycle manager from full configuration including signature verification
+    #[instrument(skip_all, fields(plugin_dir = %plugin_dir.as_ref().display()))]
+    pub async fn new_with_config(
+        plugin_dir: impl AsRef<Path>,
+        signature_verification: &crate::config::SignatureVerificationConfig,
+    ) -> Result<Self> {
+        let verification_config = SigVerConfig {
+            enforce: signature_verification.enforce,
+            trusted_keys: signature_verification.trusted_keys.clone(),
+            trusted_certs: signature_verification.trusted_certs.clone(),
+            allow_fulcio: signature_verification.allow_fulcio,
+        };
+        
+        Self::new_with_verification_config(
+            plugin_dir,
+            oci_client::Client::default(),
+            reqwest::Client::default(),
+            VerificationConfig::from(&verification_config),
         )
         .await
     }
@@ -160,6 +195,31 @@ impl LifecycleManager {
         plugin_dir: impl AsRef<Path>,
         oci_client: oci_client::Client,
         http_client: reqwest::Client,
+    ) -> Result<Self> {
+        // Use default signature verification configuration (enforce by default)
+        let default_verification_config = VerificationConfig {
+            enforce: true,
+            trusted_keys: Vec::new(),
+            trusted_certs: Vec::new(),
+            allow_fulcio: false,
+        };
+        
+        Self::new_with_verification_config(
+            plugin_dir,
+            oci_client,
+            http_client,
+            default_verification_config,
+        )
+        .await
+    }
+
+    /// Creates a lifecycle manager with custom clients and signature verification
+    #[instrument(skip_all)]
+    pub async fn new_with_verification_config(
+        plugin_dir: impl AsRef<Path>,
+        oci_client: oci_client::Client,
+        http_client: reqwest::Client,
+        verification_config: VerificationConfig,
     ) -> Result<Self> {
         let components_dir = plugin_dir.as_ref();
 
@@ -172,8 +232,15 @@ impl LifecycleManager {
         config.async_support(true);
         let engine = Arc::new(wasmtime::Engine::new(&config)?);
 
+        // Create the signature verifier
+        let signature_verifier = Arc::new(
+            SignatureVerifier::new(verification_config)
+                .await
+                .context("Failed to create signature verifier")?
+        );
+
         // Create the lifecycle manager
-        Self::new_with_policy(engine, components_dir, oci_client, http_client).await
+        Self::new_with_policy(engine, components_dir, oci_client, http_client, signature_verifier).await
     }
 
     /// Creates a lifecycle manager with custom clients and WASI state template
@@ -183,6 +250,7 @@ impl LifecycleManager {
         plugin_dir: impl AsRef<Path>,
         oci_client: oci_client::Client,
         http_client: reqwest::Client,
+        signature_verifier: Arc<SignatureVerifier>,
     ) -> Result<Self> {
         info!("Creating new LifecycleManager");
 
@@ -261,9 +329,11 @@ impl LifecycleManager {
             components: Arc::new(RwLock::new(components)),
             registry: Arc::new(RwLock::new(registry)),
             policy_registry: Arc::new(RwLock::new(policy_registry)),
-            oci_client: Arc::new(oci_wasm::WasmClient::new(oci_client)),
+            oci_client: Arc::new(oci_wasm::WasmClient::new(oci_client.clone())),
+            oci_client_raw: Arc::new(oci_client),
             http_client,
             plugin_dir: plugin_dir.as_ref().to_path_buf(),
+            signature_verifier,
         })
     }
 
@@ -275,9 +345,14 @@ impl LifecycleManager {
     pub async fn load_component(&self, uri: &str) -> Result<(String, LoadResult)> {
         debug!(uri, "Loading component");
 
-        let downloaded_resource =
-            loader::load_resource::<ComponentResource>(uri, &self.oci_client, &self.http_client)
-                .await?;
+        let downloaded_resource = loader::load_resource_with_verification::<ComponentResource>(
+            uri, 
+            &self.oci_client, 
+            &self.oci_client_raw,
+            &self.http_client,
+            Some(&self.signature_verifier)
+        )
+        .await?;
 
         let wasm_bytes = tokio::fs::read(downloaded_resource.as_ref())
             .await

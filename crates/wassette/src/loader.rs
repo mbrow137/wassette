@@ -8,7 +8,7 @@ use anyhow::{bail, Context, Result};
 use futures::TryStreamExt;
 use tokio::fs::metadata;
 use tokio::io::AsyncWriteExt;
-use tracing::{debug, warn};
+use crate::signature_verification::SignatureVerifier;
 
 /// Represents a downloaded resource, either from a local file or a temporary one.
 pub enum DownloadedResource {
@@ -137,6 +137,11 @@ pub trait Loadable: Sized {
         reference: &str,
         oci_client: &oci_client::Client,
     ) -> Result<DownloadedResource>;
+    async fn from_oci_reference_with_verification(
+        reference: &str,
+        oci_client: &oci_client::Client,
+        signature_verifier: Option<&SignatureVerifier>,
+    ) -> Result<DownloadedResource>;
     async fn from_url(url: &str, http_client: &reqwest::Client) -> Result<DownloadedResource>;
 }
 
@@ -171,8 +176,25 @@ impl Loadable for ComponentResource {
         reference: &str,
         oci_client: &oci_client::Client,
     ) -> Result<DownloadedResource> {
+        Self::from_oci_reference_with_verification(reference, oci_client, None).await
+    }
+
+    async fn from_oci_reference_with_verification(
+        reference: &str,
+        oci_client: &oci_client::Client,
+        signature_verifier: Option<&SignatureVerifier>,
+    ) -> Result<DownloadedResource> {
         let reference: oci_client::Reference =
             reference.parse().context("Failed to parse OCI reference")?;
+        
+        // Perform signature verification if a verifier is provided
+        if let Some(verifier) = signature_verifier {
+            verifier
+                .verify_signature(&reference, oci_client)
+                .await
+                .context("Signature verification failed")?;
+        }
+        
         let data = oci_wasm::WasmClient::from(oci_client.clone())
             .pull(&reference, &oci_client::secrets::RegistryAuth::Anonymous)
             .await?;
@@ -248,6 +270,14 @@ impl Loadable for PolicyResource {
         bail!("OCI references are not supported for policy resources. Use 'file://' or 'https://' schemes instead.")
     }
 
+    async fn from_oci_reference_with_verification(
+        _reference: &str,
+        _oci_client: &oci_client::Client,
+        _signature_verifier: Option<&SignatureVerifier>,
+    ) -> Result<DownloadedResource> {
+        bail!("OCI references are not supported for policy resources. Use 'file://' or 'https://' schemes instead.")
+    }
+
     async fn from_url(url: &str, http_client: &reqwest::Client) -> Result<DownloadedResource> {
         let url_obj = reqwest::Url::parse(url)?;
         let filename = url_obj
@@ -287,6 +317,17 @@ pub(crate) async fn load_resource<T: Loadable>(
     oci_client: &oci_wasm::WasmClient,
     http_client: &reqwest::Client,
 ) -> Result<DownloadedResource> {
+    load_resource_with_verification::<T>(uri, oci_client, http_client, None).await
+}
+
+/// Generic resource loading function with signature verification
+pub(crate) async fn load_resource_with_verification<T: Loadable>(
+    uri: &str,
+    oci_client: &oci_wasm::WasmClient,
+    oci_client_raw: &oci_client::Client,
+    http_client: &reqwest::Client,
+    signature_verifier: Option<&SignatureVerifier>,
+) -> Result<DownloadedResource> {
     let uri = uri.trim();
     let error_message = format!(
         "Invalid {} reference. Should be of the form scheme://reference",
@@ -296,7 +337,7 @@ pub(crate) async fn load_resource<T: Loadable>(
 
     match scheme {
         "file" => T::from_local_file(Path::new(reference)).await,
-        "oci" => T::from_oci_reference(reference, oci_client).await,
+        "oci" => T::from_oci_reference_with_verification(reference, oci_client_raw, signature_verifier).await,
         "https" => T::from_url(uri, http_client).await,
         _ => bail!("Unsupported {} scheme: {}", T::RESOURCE_TYPE, scheme),
     }

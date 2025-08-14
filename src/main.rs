@@ -270,7 +270,10 @@ async fn main() -> Result<()> {
 
             let config = config::Config::new(cfg).context("Failed to load configuration")?;
 
-            let lifecycle_manager = LifecycleManager::new(&config.plugin_dir).await?;
+            let lifecycle_manager = LifecycleManager::new_with_config(
+                &config.plugin_dir, 
+                &config.signature_verification
+            ).await?;
 
             let server = McpServer::new(lifecycle_manager);
 
