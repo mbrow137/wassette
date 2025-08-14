@@ -1,0 +1,26 @@
+# Example Wassette configuration with signature verification
+
+# Plugin directory for storing components
+plugin_dir = "/home/user/.local/share/wasette/components"
+
+# Signature verification configuration
+[signature_verification]
+# Enable signature verification (default: true)
+enforce = true
+
+# Trusted public keys in PEM format
+trusted_keys = [
+    # Example public key (replace with your actual keys)
+    "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE...\n-----END PUBLIC KEY-----"
+]
+
+# Paths to trusted certificate files
+trusted_certs = [
+    "/etc/wasette/certs/signing-cert.pem"
+]
+
+# Allow Fulcio-issued certificates (default: false)
+allow_fulcio = false
+
+# For development/testing only - disable verification
+# enforce = false
