@@ -170,6 +170,10 @@ impl LifecycleManager {
         let mut config = wasmtime::Config::new();
         config.wasm_component_model(true);
         config.async_support(true);
+        
+        // Enable fuel consumption for CPU limiting
+        config.consume_fuel(true);
+        
         let engine = Arc::new(wasmtime::Engine::new(&config)?);
 
         // Create the lifecycle manager
@@ -464,6 +468,18 @@ impl LifecycleManager {
         WassetteWasiState::new(wasi_state, allowed_hosts)
     }
 
+    async fn get_policy_template_for_component(
+        &self,
+        component_id: &str,
+    ) -> Arc<WasiStateTemplate> {
+        let policy_registry = self.policy_registry.read().await;
+        policy_registry
+            .component_policies
+            .get(component_id)
+            .cloned()
+            .unwrap_or_else(Self::create_default_policy_template)
+    }
+
     /// Executes a function call on a WebAssembly component
     #[instrument(skip(self))]
     pub async fn execute_component_call(
@@ -478,8 +494,14 @@ impl LifecycleManager {
             .ok_or_else(|| anyhow!("Component not found: {}", component_id))?;
 
         let state = self.get_wasi_state_for_component(component_id).await?;
+        let policy_template = self.get_policy_template_for_component(component_id).await;
 
         let mut store = Store::new(self.engine.as_ref(), state);
+        
+        // Apply CPU fuel limit if specified in policy
+        if let Some(fuel_limit) = policy_template.cpu_fuel_limit {
+            store.set_fuel(fuel_limit).context("Failed to set fuel limit")?;
+        }
 
         let instance = component
             .instance_pre

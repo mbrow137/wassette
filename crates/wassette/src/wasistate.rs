@@ -113,6 +113,8 @@ pub struct WasiStateTemplate {
     pub preopened_dirs: Vec<PreopenedDir>,
     /// Allowed network hosts for HTTP requests
     pub allowed_hosts: HashSet<String>,
+    /// CPU limit in fuel units (if set, enables fuel consumption)
+    pub cpu_fuel_limit: Option<u64>,
 }
 
 impl Default for WasiStateTemplate {
@@ -125,6 +127,7 @@ impl Default for WasiStateTemplate {
             config_vars: HashMap::new(),
             preopened_dirs: Vec::new(),
             allowed_hosts: HashSet::new(),
+            cpu_fuel_limit: None,
         }
     }
 }
@@ -138,14 +141,39 @@ pub fn create_wasi_state_template_from_policy(
     let network_perms = extract_network_perms(policy);
     let preopened_dirs = extract_storage_permissions(policy, plugin_dir)?;
     let allowed_hosts = extract_allowed_hosts(policy);
+    let cpu_fuel_limit = extract_cpu_fuel_limit(policy)?;
 
     Ok(WasiStateTemplate {
         network_perms,
         config_vars: env_vars,
         preopened_dirs,
         allowed_hosts,
+        cpu_fuel_limit,
         ..Default::default()
     })
+}
+
+pub(crate) fn extract_cpu_fuel_limit(policy: &PolicyDocument) -> anyhow::Result<Option<u64>> {
+    if let Some(resources) = &policy.permissions.resources {
+        // First check the new k8s-style limits
+        if let Some(limits) = &resources.limits {
+            if let Some(cpu_cores) = limits.cpu_cores()? {
+                // Convert CPU cores to fuel units
+                // Using a conversion factor: 1 core = 1,000,000 fuel units
+                // This is a reasonable default that can be adjusted based on needs
+                let fuel_units = (cpu_cores * 1_000_000.0) as u64;
+                return Ok(Some(fuel_units));
+            }
+        }
+        
+        // Fall back to legacy CPU field for backward compatibility
+        if let Some(cpu_cores) = resources.cpu {
+            let fuel_units = (cpu_cores * 1_000_000.0) as u64;
+            return Ok(Some(fuel_units));
+        }
+    }
+    
+    Ok(None)
 }
 
 pub(crate) fn extract_env_vars(policy: &PolicyDocument) -> anyhow::Result<HashMap<String, String>> {
@@ -594,6 +622,83 @@ permissions:
         assert!(template.allow_stdout);
         assert!(template.allow_stderr);
         assert!(template.allow_args);
+    }
+
+    #[test]
+    fn test_extract_cpu_fuel_limit_with_k8s_format() {
+        let yaml_content = r#"
+version: "1.0"
+description: "Test policy with CPU limits"
+permissions:
+  resources:
+    limits:
+      cpu: "500m"
+"#;
+        let policy = PolicyParser::parse_str(yaml_content).unwrap();
+        let cpu_fuel_limit = extract_cpu_fuel_limit(&policy).unwrap();
+        
+        // 500m = 0.5 cores = 500,000 fuel units
+        assert_eq!(cpu_fuel_limit, Some(500_000));
+    }
+
+    #[test]
+    fn test_extract_cpu_fuel_limit_with_numeric_format() {
+        let yaml_content = r#"
+version: "1.0"
+description: "Test policy with numeric CPU limits"
+permissions:
+  resources:
+    limits:
+      cpu: 2.0
+"#;
+        let policy = PolicyParser::parse_str(yaml_content).unwrap();
+        let cpu_fuel_limit = extract_cpu_fuel_limit(&policy).unwrap();
+        
+        // 2.0 cores = 2,000,000 fuel units
+        assert_eq!(cpu_fuel_limit, Some(2_000_000));
+    }
+
+    #[test]
+    fn test_extract_cpu_fuel_limit_legacy_format() {
+        let yaml_content = r#"
+version: "1.0"
+description: "Test policy with legacy CPU limits"
+permissions:
+  resources:
+    cpu: 1.5
+"#;
+        let policy = PolicyParser::parse_str(yaml_content).unwrap();
+        let cpu_fuel_limit = extract_cpu_fuel_limit(&policy).unwrap();
+        
+        // 1.5 cores = 1,500,000 fuel units
+        assert_eq!(cpu_fuel_limit, Some(1_500_000));
+    }
+
+    #[test]
+    fn test_extract_cpu_fuel_limit_no_cpu() {
+        let policy = create_test_policy(); // This doesn't have CPU limits
+        let cpu_fuel_limit = extract_cpu_fuel_limit(&policy).unwrap();
+        
+        assert_eq!(cpu_fuel_limit, None);
+    }
+
+    #[test]
+    fn test_create_wasi_state_template_with_cpu_limits() {
+        let temp_dir = TempDir::new().unwrap();
+        let plugin_dir = temp_dir.path();
+        
+        let yaml_content = r#"
+version: "1.0"
+description: "Test policy with CPU limits"
+permissions:
+  resources:
+    limits:
+      cpu: "1"
+"#;
+        let policy = PolicyParser::parse_str(yaml_content).unwrap();
+        let template = create_wasi_state_template_from_policy(&policy, plugin_dir).unwrap();
+        
+        assert_eq!(template.cpu_fuel_limit, Some(1_000_000));
     }
 
     proptest! {

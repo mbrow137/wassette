@@ -291,6 +291,23 @@ impl crate::LifecycleManager {
                     key: key.to_string(),
                 })
             }
+            "cpu" => {
+                let cpu_value = details
+                    .get("cpu")
+                    .ok_or_else(|| anyhow!("Missing 'cpu' field for CPU permission"))?;
+                
+                // Handle both string and numeric CPU values
+                let cpu_limit = if let Some(cpu_str) = cpu_value.as_str() {
+                    policy::CpuLimit::String(cpu_str.to_string())
+                } else if let Some(cpu_num) = cpu_value.as_f64() {
+                    policy::CpuLimit::Number(cpu_num)
+                } else {
+                    return Err(anyhow!("Invalid CPU value format - expected string or number"));
+                };
+                
+                // Store as custom permission with CPU limit data
+                PermissionRule::Custom("cpu".to_string(), serde_json::json!({"cpu": cpu_limit}))
+            }
             other => {
                 // For custom permission types, store the type name and raw details
                 PermissionRule::Custom(other.to_string(), details.clone())
@@ -338,8 +355,11 @@ impl crate::LifecycleManager {
             PermissionRule::Environment(env) => {
                 self.add_environment_permission_to_policy(policy, env)
             }
-            PermissionRule::Custom(type_name, _details) => {
-                todo!("Custom permission type '{}' not yet implemented", type_name);
+            PermissionRule::Custom(type_name, details) => {
+                match type_name.as_str() {
+                    "cpu" => self.add_cpu_permission_to_policy(policy, &details),
+                    _ => Err(anyhow!("Custom permission type '{}' not implemented", type_name)),
+                }
             }
         }
     }
@@ -412,6 +432,46 @@ impl crate::LifecycleManager {
         // Only add if not already present (prevent duplicates)
         if !allow_set.contains(&env) {
             allow_set.push(env);
+        }
+
+        Ok(())
+    }
+
+    /// Add CPU permission to policy
+    fn add_cpu_permission_to_policy(
+        &self,
+        policy: &mut PolicyDocument,
+        details: &serde_json::Value,
+    ) -> Result<()> {
+        let cpu_limit = details
+            .get("cpu")
+            .ok_or_else(|| anyhow!("Missing 'cpu' field in CPU permission details"))?;
+
+        // Parse the CPU limit from the details
+        let parsed_cpu_limit = if let Some(cpu_str) = cpu_limit.as_str() {
+            policy::CpuLimit::String(cpu_str.to_string())
+        } else if let Some(cpu_num) = cpu_limit.as_f64() {
+            policy::CpuLimit::Number(cpu_num)
+        } else {
+            return Err(anyhow!("Invalid CPU value format - expected string or number"));
+        };
+
+        // Initialize resources section if it doesn't exist
+        let resources = policy
+            .permissions
+            .resources
+            .get_or_insert_with(|| policy::ResourceLimits {
+                limits: Some(policy::ResourceLimitValues::new(None, None)),
+                cpu: None,
+                memory: None,
+                io: None,
+            });
+
+        // Update the CPU limit in the limits section
+        if let Some(limits) = &mut resources.limits {
+            limits.cpu = Some(parsed_cpu_limit);
+        } else {
+            resources.limits = Some(policy::ResourceLimitValues::new(Some(parsed_cpu_limit), None));
         }
 
         Ok(())
