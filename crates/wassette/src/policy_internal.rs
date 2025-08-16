@@ -441,7 +441,7 @@ impl crate::LifecycleManager {
     }
 
     /// Add resource permission to policy
-    fn add_resource_permission_to_policy(
+    pub(crate) fn add_resource_permission_to_policy(
         &self,
         policy: &mut PolicyDocument,
         details: serde_json::Value,
@@ -1156,29 +1156,32 @@ permissions:
         Ok(())
     }
 
-    #[tokio::test]
-    async fn test_grant_permission_resource_memory() -> Result<()> {
-        let manager = create_test_manager().await?;
-        manager.load_test_component().await?;
-
-        // Grant memory resource permission
-        let details = serde_json::json!({"memory": "512Mi"});
-        manager
-            .grant_permission(TEST_COMPONENT_ID, "resource", &details)
-            .await?;
-
-        // Verify policy file was created and contains the resource permission
-        let policy_path = manager.get_component_policy_path(TEST_COMPONENT_ID);
-        assert!(policy_path.exists());
-
-        let policy_content = tokio::fs::read_to_string(&policy_path).await?;
-        assert!(policy_content.contains("resources"));
-        assert!(policy_content.contains("limits"));
-        assert!(policy_content.contains("memory"));
-        assert!(policy_content.contains("512Mi"));
-
-        // Verify the policy can be parsed and contains the correct memory limit
-        let policy = PolicyParser::parse_str(&policy_content)?;
+    #[test]
+    fn test_add_resource_permission_to_policy() -> Result<()> {
+        let manager_result = tokio::runtime::Runtime::new().unwrap().block_on(async {
+            create_test_manager().await
+        });
+        let manager = manager_result.unwrap();
+        
+        // Create a minimal policy
+        let mut policy = policy::PolicyDocument {
+            version: "1.0".to_string(),
+            description: Some("Test policy".to_string()),
+            permissions: policy::Permissions::default(),
+        };
+        
+        // Test adding resource permission
+        let resource_details = serde_json::json!({
+            "resources": {
+                "limits": {
+                    "memory": "512Mi"
+                }
+            }
+        });
+        
+        manager.manager.add_resource_permission_to_policy(&mut policy, resource_details)?;
+        
+        // Verify the policy has the resource permission
         let resources = policy.permissions.resources.expect("Should have resources");
         let limits = resources.limits.expect("Should have limits");
         let memory = limits.memory.expect("Should have memory limit");

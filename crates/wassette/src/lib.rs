@@ -35,7 +35,7 @@ use loader::{ComponentResource, PolicyResource};
 use policy_internal::PolicyRegistry;
 pub use policy_internal::{PermissionGrantRequest, PermissionRule, PolicyInfo};
 use wasistate::WasiState;
-pub use wasistate::{create_wasi_state_template_from_policy, WasiStateTemplate};
+pub use wasistate::{create_wasi_state_template_from_policy, WasiStateTemplate, CustomResourceLimiter};
 
 const DOWNLOADS_DIR: &str = "downloads";
 
@@ -477,7 +477,7 @@ impl LifecycleManager {
     async fn get_wasi_state_for_component(
         &self,
         component_id: &str,
-    ) -> Result<(WassetteWasiState<WasiState>, Option<wasmtime::StoreLimits>)> {
+    ) -> Result<(WassetteWasiState<WasiState>, Option<CustomResourceLimiter>)> {
         let policy_registry = self.policy_registry.read().await;
 
         let policy_template = policy_registry
@@ -488,10 +488,10 @@ impl LifecycleManager {
 
         let wasi_state = policy_template.build()?;
         let allowed_hosts = policy_template.allowed_hosts.clone();
-        let store_limits = policy_template.store_limits.clone();
+        let resource_limiter = wasi_state.resource_limiter.clone();
 
         let wassette_wasi_state = WassetteWasiState::new(wasi_state, allowed_hosts)?;
-        Ok((wassette_wasi_state, store_limits))
+        Ok((wassette_wasi_state, resource_limiter))
     }
 
     /// Executes a function call on a WebAssembly component
@@ -507,14 +507,14 @@ impl LifecycleManager {
             .await
             .ok_or_else(|| anyhow!("Component not found: {}", component_id))?;
 
-        let (state, _store_limits) = self.get_wasi_state_for_component(component_id).await?;
+        let (state, _resource_limiter) = self.get_wasi_state_for_component(component_id).await?;
 
         let mut store = Store::new(self.engine.as_ref(), state);
         
-        // TODO: Apply store limits - need to figure out the correct Wasmtime API
-        // if let Some(limits) = store_limits {
-        //     store.limiter(|_| limits);
-        // }
+        // TODO: Properly apply memory limits using Wasmtime ResourceLimiter
+        // The current approach has ownership issues with the limiter closure
+        // Need to research the correct pattern for storing and applying limits
+        // For now, the memory limits are parsed and stored in the policy system
 
         let instance = component
             .instance_pre

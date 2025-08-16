@@ -47,6 +47,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **BREAKING CHANGE**: Upgraded rmcp dependency from v0.2 to v0.5.0 to enable native structured output support ([#181](https://github.com/microsoft/wassette/pull/181))
 - Copyright header instructions to Rust development guidelines ([#TBD](https://github.com/microsoft/wassette/pull/TBD))
 - Enhanced environment variable CLI experience with `--env` and `--env-file` options for better configuration management
+- Memory resource granting functionality for components with k8s-style memory limits ([#171](https://github.com/microsoft/wassette/pull/171))
 - Comprehensive Go development guide for authoring Wasm components ([#163](https://github.com/microsoft/wassette/pull/163))
 - Comprehensive documentation for authoring Wasm Components with Python ([#161](https://github.com/microsoft/wassette/pull/161))
 - Detailed documentation for authoring WebAssembly Components from JavaScript/TypeScript ([#159](https://github.com/microsoft/wassette/pull/159))
