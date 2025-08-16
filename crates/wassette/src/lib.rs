@@ -35,7 +35,9 @@ use loader::{ComponentResource, PolicyResource};
 use policy_internal::PolicyRegistry;
 pub use policy_internal::{PermissionGrantRequest, PermissionRule, PolicyInfo};
 use wasistate::WasiState;
-pub use wasistate::{create_wasi_state_template_from_policy, WasiStateTemplate, CustomResourceLimiter};
+pub use wasistate::{
+    create_wasi_state_template_from_policy, CustomResourceLimiter, WasiStateTemplate,
+};
 
 const DOWNLOADS_DIR: &str = "downloads";
 
@@ -507,14 +509,14 @@ impl LifecycleManager {
             .await
             .ok_or_else(|| anyhow!("Component not found: {}", component_id))?;
 
-        let (state, _resource_limiter) = self.get_wasi_state_for_component(component_id).await?;
+        let (state, resource_limiter) = self.get_wasi_state_for_component(component_id).await?;
 
         let mut store = Store::new(self.engine.as_ref(), state);
-        
-        // TODO: Properly apply memory limits using Wasmtime ResourceLimiter
-        // The current approach has ownership issues with the limiter closure
-        // Need to research the correct pattern for storing and applying limits
-        // For now, the memory limits are parsed and stored in the policy system
+
+        // Apply memory limits if configured in the policy
+        if let Some(limiter) = resource_limiter {
+            store.set_limiter(limiter);
+        }
 
         let instance = component
             .instance_pre

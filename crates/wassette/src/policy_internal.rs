@@ -299,7 +299,7 @@ impl crate::LifecycleManager {
                     .get("memory")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| anyhow!("Missing 'memory' field for resource permission"))?;
-                
+
                 // Store as a custom rule with the specific structure expected by the policy system
                 let resource_details = serde_json::json!({
                     "resources": {
@@ -361,7 +361,10 @@ impl crate::LifecycleManager {
                 if type_name == "resource" {
                     self.add_resource_permission_to_policy(policy, details)
                 } else {
-                    Err(anyhow!("Custom permission type '{}' not yet implemented", type_name))
+                    Err(anyhow!(
+                        "Custom permission type '{}' not yet implemented",
+                        type_name
+                    ))
                 }
             }
         }
@@ -455,11 +458,16 @@ impl crate::LifecycleManager {
             .ok_or_else(|| anyhow!("Invalid resource permission format"))?;
 
         // Initialize resources if not present
-        let resources = policy.permissions.resources.get_or_insert_with(Default::default);
-        
+        let resources = policy
+            .permissions
+            .resources
+            .get_or_insert_with(Default::default);
+
         // Initialize limits if not present
-        let limits = resources.limits.get_or_insert_with(|| policy::ResourceLimitValues::new(None, None));
-        
+        let limits = resources
+            .limits
+            .get_or_insert_with(|| policy::ResourceLimitValues::new(None, None));
+
         // Set the memory limit
         limits.memory = Some(policy::MemoryLimit::String(memory_str.to_string()));
 
@@ -1158,18 +1166,18 @@ permissions:
 
     #[test]
     fn test_add_resource_permission_to_policy() -> Result<()> {
-        let manager_result = tokio::runtime::Runtime::new().unwrap().block_on(async {
-            create_test_manager().await
-        });
+        let manager_result = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(async { create_test_manager().await });
         let manager = manager_result.unwrap();
-        
+
         // Create a minimal policy
         let mut policy = policy::PolicyDocument {
             version: "1.0".to_string(),
             description: Some("Test policy".to_string()),
             permissions: policy::Permissions::default(),
         };
-        
+
         // Test adding resource permission
         let resource_details = serde_json::json!({
             "resources": {
@@ -1178,14 +1186,16 @@ permissions:
                 }
             }
         });
-        
-        manager.manager.add_resource_permission_to_policy(&mut policy, resource_details)?;
-        
+
+        manager
+            .manager
+            .add_resource_permission_to_policy(&mut policy, resource_details)?;
+
         // Verify the policy has the resource permission
         let resources = policy.permissions.resources.expect("Should have resources");
         let limits = resources.limits.expect("Should have limits");
         let memory = limits.memory.expect("Should have memory limit");
-        
+
         match memory {
             policy::MemoryLimit::String(mem_str) => {
                 assert_eq!(mem_str, "512Mi");
