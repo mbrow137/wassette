@@ -294,6 +294,22 @@ impl crate::LifecycleManager {
                     key: key.to_string(),
                 })
             }
+            "resource" => {
+                let memory = details
+                    .get("memory")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| anyhow!("Missing 'memory' field for resource permission"))?;
+                
+                // Store as a custom rule with the specific structure expected by the policy system
+                let resource_details = serde_json::json!({
+                    "resources": {
+                        "limits": {
+                            "memory": memory
+                        }
+                    }
+                });
+                PermissionRule::Custom("resource".to_string(), resource_details)
+            }
             other => {
                 // For custom permission types, store the type name and raw details
                 PermissionRule::Custom(other.to_string(), details.clone())
@@ -341,8 +357,12 @@ impl crate::LifecycleManager {
             PermissionRule::Environment(env) => {
                 self.add_environment_permission_to_policy(policy, env)
             }
-            PermissionRule::Custom(type_name, _details) => {
-                todo!("Custom permission type '{}' not yet implemented", type_name);
+            PermissionRule::Custom(type_name, details) => {
+                if type_name == "resource" {
+                    self.add_resource_permission_to_policy(policy, details)
+                } else {
+                    Err(anyhow!("Custom permission type '{}' not yet implemented", type_name))
+                }
             }
         }
     }
@@ -416,6 +436,32 @@ impl crate::LifecycleManager {
         if !allow_set.contains(&env) {
             allow_set.push(env);
         }
+
+        Ok(())
+    }
+
+    /// Add resource permission to policy
+    fn add_resource_permission_to_policy(
+        &self,
+        policy: &mut PolicyDocument,
+        details: serde_json::Value,
+    ) -> Result<()> {
+        // Extract the memory limit from the details
+        let memory_str = details
+            .get("resources")
+            .and_then(|r| r.get("limits"))
+            .and_then(|l| l.get("memory"))
+            .and_then(|m| m.as_str())
+            .ok_or_else(|| anyhow!("Invalid resource permission format"))?;
+
+        // Initialize resources if not present
+        let resources = policy.permissions.resources.get_or_insert_with(Default::default);
+        
+        // Initialize limits if not present
+        let limits = resources.limits.get_or_insert_with(|| policy::ResourceLimitValues::new(None, None));
+        
+        // Set the memory limit
+        limits.memory = Some(policy::MemoryLimit::String(memory_str.to_string()));
 
         Ok(())
     }
@@ -1105,6 +1151,43 @@ permissions:
                 assert_eq!(host, "test.com");
             }
             _ => panic!("Expected network permission"),
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_grant_permission_resource_memory() -> Result<()> {
+        let manager = create_test_manager().await?;
+        manager.load_test_component().await?;
+
+        // Grant memory resource permission
+        let details = serde_json::json!({"memory": "512Mi"});
+        manager
+            .grant_permission(TEST_COMPONENT_ID, "resource", &details)
+            .await?;
+
+        // Verify policy file was created and contains the resource permission
+        let policy_path = manager.get_component_policy_path(TEST_COMPONENT_ID);
+        assert!(policy_path.exists());
+
+        let policy_content = tokio::fs::read_to_string(&policy_path).await?;
+        assert!(policy_content.contains("resources"));
+        assert!(policy_content.contains("limits"));
+        assert!(policy_content.contains("memory"));
+        assert!(policy_content.contains("512Mi"));
+
+        // Verify the policy can be parsed and contains the correct memory limit
+        let policy = PolicyParser::parse_str(&policy_content)?;
+        let resources = policy.permissions.resources.expect("Should have resources");
+        let limits = resources.limits.expect("Should have limits");
+        let memory = limits.memory.expect("Should have memory limit");
+        
+        match memory {
+            policy::MemoryLimit::String(mem_str) => {
+                assert_eq!(mem_str, "512Mi");
+            }
+            _ => panic!("Expected string memory limit"),
         }
 
         Ok(())

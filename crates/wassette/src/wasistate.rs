@@ -112,6 +112,10 @@ pub struct WasiStateTemplate {
     pub preopened_dirs: Vec<PreopenedDir>,
     /// Allowed network hosts for HTTP requests
     pub allowed_hosts: HashSet<String>,
+    /// Memory limit in bytes for the component
+    pub memory_limit: Option<u64>,
+    /// Store limits for wasmtime (built from memory_limit)
+    pub store_limits: Option<wasmtime::StoreLimits>,
 }
 
 impl Default for WasiStateTemplate {
@@ -124,6 +128,8 @@ impl Default for WasiStateTemplate {
             config_vars: HashMap::new(),
             preopened_dirs: Vec::new(),
             allowed_hosts: HashSet::new(),
+            memory_limit: None,
+            store_limits: None,
         }
     }
 }
@@ -138,12 +144,20 @@ pub fn create_wasi_state_template_from_policy(
     let network_perms = extract_network_perms(policy);
     let preopened_dirs = extract_storage_permissions(policy, plugin_dir)?;
     let allowed_hosts = extract_allowed_hosts(policy);
+    let memory_limit = extract_memory_limit(policy)?;
+    let store_limits = memory_limit.map(|limit| {
+        wasmtime::StoreLimitsBuilder::new()
+            .memory_size(limit.try_into().unwrap_or(usize::MAX))
+            .build()
+    });
 
     Ok(WasiStateTemplate {
         network_perms,
         config_vars: env_vars,
         preopened_dirs,
         allowed_hosts,
+        memory_limit,
+        store_limits,
         ..Default::default()
     })
 }
@@ -250,6 +264,26 @@ pub(crate) fn calculate_permissions(
         });
 
     (file_perms, dir_perms)
+}
+
+/// Extract memory limit from the policy document
+pub(crate) fn extract_memory_limit(policy: &PolicyDocument) -> anyhow::Result<Option<u64>> {
+    if let Some(resources) = &policy.permissions.resources {
+        // Check the new k8s-style limits first
+        if let Some(limits) = &resources.limits {
+            if let Some(memory_limit) = &limits.memory {
+                return Ok(Some(memory_limit.to_bytes()?));
+            }
+        }
+        
+        // Fall back to legacy memory field for backward compatibility
+        if let Some(legacy_memory) = resources.memory {
+            // Legacy numeric values are assumed to be in MB
+            return Ok(Some(legacy_memory * 1024 * 1024));
+        }
+    }
+    
+    Ok(None)
 }
 
 #[cfg(test)]
@@ -607,6 +641,59 @@ permissions:
         assert!(template.allow_stdout);
         assert!(template.allow_stderr);
         assert!(template.allow_args);
+        assert_eq!(template.memory_limit, None);
+    }
+
+    #[test]
+    fn test_extract_memory_limit() {
+        // Test with k8s-style memory limit
+        let yaml_content = r#"
+version: "1.0"
+description: "Policy with memory limit"
+permissions:
+  resources:
+    limits:
+      memory: "512Mi"
+"#;
+        let policy = PolicyParser::parse_str(yaml_content).unwrap();
+        let memory_limit = extract_memory_limit(&policy).unwrap();
+        assert_eq!(memory_limit, Some(512 * 1024 * 1024));
+
+        // Test with legacy memory limit
+        let yaml_content_legacy = r#"
+version: "1.0"
+description: "Policy with legacy memory limit"
+permissions:
+  resources:
+    memory: 256
+"#;
+        let policy_legacy = PolicyParser::parse_str(yaml_content_legacy).unwrap();
+        let memory_limit_legacy = extract_memory_limit(&policy_legacy).unwrap();
+        assert_eq!(memory_limit_legacy, Some(256 * 1024 * 1024));
+
+        // Test with no memory limit
+        let policy_no_mem = create_zero_permission_policy();
+        let memory_limit_none = extract_memory_limit(&policy_no_mem).unwrap();
+        assert_eq!(memory_limit_none, None);
+    }
+
+    #[test]
+    fn test_create_wasi_state_template_with_memory_limit() {
+        let temp_dir = TempDir::new().unwrap();
+        let plugin_dir = temp_dir.path();
+        
+        let yaml_content = r#"
+version: "1.0"
+description: "Policy with memory limit"
+permissions:
+  resources:
+    limits:
+      memory: "512Mi"
+"#;
+        let policy = PolicyParser::parse_str(yaml_content).unwrap();
+        let template = create_wasi_state_template_from_policy(&policy, plugin_dir).unwrap();
+        
+        assert_eq!(template.memory_limit, Some(512 * 1024 * 1024));
     }
 
     proptest! {

@@ -360,6 +360,17 @@ impl ResourceLimitValues {
     }
 }
 
+impl Default for ResourceLimits {
+    fn default() -> Self {
+        Self {
+            limits: None,
+            cpu: None,
+            memory: None,
+            io: None,
+        }
+    }
+}
+
 impl ResourceLimits {
     /// Validate resource limits
     pub fn validate(&self) -> PolicyResult<()> {

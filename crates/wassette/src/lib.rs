@@ -477,7 +477,7 @@ impl LifecycleManager {
     async fn get_wasi_state_for_component(
         &self,
         component_id: &str,
-    ) -> Result<WassetteWasiState<WasiState>> {
+    ) -> Result<(WassetteWasiState<WasiState>, Option<wasmtime::StoreLimits>)> {
         let policy_registry = self.policy_registry.read().await;
 
         let policy_template = policy_registry
@@ -488,8 +488,10 @@ impl LifecycleManager {
 
         let wasi_state = policy_template.build()?;
         let allowed_hosts = policy_template.allowed_hosts.clone();
+        let store_limits = policy_template.store_limits.clone();
 
-        WassetteWasiState::new(wasi_state, allowed_hosts)
+        let wassette_wasi_state = WassetteWasiState::new(wasi_state, allowed_hosts)?;
+        Ok((wassette_wasi_state, store_limits))
     }
 
     /// Executes a function call on a WebAssembly component
@@ -505,9 +507,14 @@ impl LifecycleManager {
             .await
             .ok_or_else(|| anyhow!("Component not found: {}", component_id))?;
 
-        let state = self.get_wasi_state_for_component(component_id).await?;
+        let (state, _store_limits) = self.get_wasi_state_for_component(component_id).await?;
 
         let mut store = Store::new(self.engine.as_ref(), state);
+        
+        // TODO: Apply store limits - need to figure out the correct Wasmtime API
+        // if let Some(limits) = store_limits {
+        //     store.limiter(|_| limits);
+        // }
 
         let instance = component
             .instance_pre
