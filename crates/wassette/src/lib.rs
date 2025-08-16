@@ -1236,4 +1236,30 @@ permissions:
 
         Ok(())
     }
+
+    #[test(tokio::test)]
+    async fn test_cpu_limits_end_to_end() -> Result<()> {
+        let manager = create_test_manager().await?;
+        
+        // Create a policy document with CPU limits and save it
+        let policy_content = r#"
+version: "1.0"
+description: "Test policy with CPU limits"
+permissions:
+  resources:
+    limits:
+      cpu: "500m"
+"#;
+        let policy_path = manager.plugin_dir.join("test_cpu_component.policy.yaml");
+        tokio::fs::write(&policy_path, policy_content).await?;
+        
+        // Parse the policy and create WASI state template
+        let policy = policy::PolicyParser::parse_str(policy_content)?;
+        let template = crate::create_wasi_state_template_from_policy(&policy, &manager.plugin_dir)?;
+        
+        // Verify CPU limits are properly extracted
+        assert_eq!(template.cpu_fuel_limit, Some(500_000)); // 500m = 500,000 fuel units
+        
+        Ok(())
+    }
 }

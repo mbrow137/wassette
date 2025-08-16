@@ -227,7 +227,8 @@ impl crate::LifecycleManager {
     }
 
     /// Parse a permission rule from the request details
-    fn parse_permission_rule(
+    #[cfg(test)]
+    pub fn parse_permission_rule(
         &self,
         permission_type: &str,
         details: &serde_json::Value,
