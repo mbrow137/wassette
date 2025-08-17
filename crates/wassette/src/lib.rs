@@ -513,9 +513,14 @@ impl LifecycleManager {
 
         let mut store = Store::new(self.engine.as_ref(), state);
 
-        // Apply memory limits if configured in the policy
-        if let Some(limiter) = resource_limiter {
-            store.set_limiter(limiter);
+        // Apply memory limits if configured in the policy by setting up a limiter closure
+        // that extracts the resource limiter from the WasiState
+        if resource_limiter.is_some() {
+            store.limiter(|state: &mut WassetteWasiState<WasiState>| {
+                // Extract the resource limiter from the inner state
+                // We know it exists because we checked above
+                state.inner.resource_limiter.as_mut().unwrap()
+            });
         }
 
         let instance = component

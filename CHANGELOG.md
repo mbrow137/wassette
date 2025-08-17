@@ -70,6 +70,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Spell check, link checker, and unused dependency checker to CI workflow ([#116](https://github.com/microsoft/wassette/pull/116))
 - Kubernetes-style resource limits in policy specification with `resources.limits` section supporting CPU ("500m", "1") and memory ("512Mi", "1Gi") formats ([#166](https://github.com/microsoft/wassette/pull/166))
 
+### Fixed
+- Memory resource limiter implementation by properly applying limits to Wasmtime store using the correct `limiter()` API ([#171](https://github.com/microsoft/wassette/pull/171))
+
 ### Changed
 - CLI now supports both server mode (`wassette serve`) and direct management mode for component operations
 - Component load/unload operations can now work independently without requiring a running MCP server
