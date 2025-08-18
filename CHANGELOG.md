@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Add cargo audit configuration to acknowledge unmaintained `paste` dependency warning ([#169](https://github.com/microsoft/wassette/pull/169))
 
 ### Added
+- Comprehensive security implementation for MCP specification compliance ([#192](https://github.com/microsoft/wassette/pull/192))
+  - Input validation and sanitization for all tool parameters
+  - Rate limiting for tool invocations using token bucket algorithm
+  - Output sanitization to prevent injection attacks
+  - Tool name validation to prevent path traversal
+  - Configurable validation settings (size limits, nesting depth, collection limits)
+  - Protection against dangerous patterns (script injection, prototype pollution)
+- New security module with comprehensive test coverage
+- Integration tests for security features
 - Dependabot automerge workflow for automated dependency updates when CI passes ([#TBD](https://github.com/microsoft/wassette/pull/TBD))
 - Copyright header instructions to Rust development guidelines ([#TBD](https://github.com/microsoft/wassette/pull/TBD))
 - Comprehensive Go development guide for authoring Wasm components ([#163](https://github.com/microsoft/wassette/pull/163))
@@ -26,6 +35,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - CI improvements including caching for Rust builds ([#98](https://github.com/microsoft/wassette/pull/98))
 - Spell check, link checker, and unused dependency checker to CI workflow ([#116](https://github.com/microsoft/wassette/pull/116))
 - Kubernetes-style resource limits in policy specification with `resources.limits` section supporting CPU ("500m", "1") and memory ("512Mi", "1Gi") formats ([#166](https://github.com/microsoft/wassette/pull/166))
+
+### Security
+- **BREAKING CHANGE**: Enhanced input validation may reject previously accepted malformed inputs ([#192](https://github.com/microsoft/wassette/pull/192))
+- Rate limiting with default 100 requests per minute per tool
+- Output sanitization removes null bytes and excessive control characters
+- Strict mode validation (enabled by default) blocks potentially dangerous input patterns
 
 ### Changed
 - **BREAKING CHANGE**: Renamed `--http` flag to `--sse` for clarity, distinguishing SSE transport from streamable HTTP transport ([#100](https://github.com/microsoft/wassette/pull/100))

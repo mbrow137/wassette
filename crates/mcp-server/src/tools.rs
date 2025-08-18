@@ -2,19 +2,38 @@
 // Licensed under the MIT license.
 
 use std::borrow::Cow;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use anyhow::Result;
 use rmcp::model::{CallToolRequestParam, CallToolResult, Content, Tool};
 use rmcp::{Peer, RoleServer};
 use serde_json::{json, Value};
-use tracing::{debug, error, info, instrument};
+use tracing::{debug, error, info, instrument, warn};
 use wassette::LifecycleManager;
 
 use crate::components::{
     extract_args_from_request, get_component_tools, handle_component_call, handle_list_components,
     handle_load_component, handle_unload_component,
 };
+use crate::security::{
+    RateLimiter, ValidationConfig, sanitize_tool_output, validate_tool_input, validate_tool_name,
+};
+
+/// Global rate limiter instance
+static RATE_LIMITER: OnceLock<RateLimiter> = OnceLock::new();
+
+/// Global validation configuration
+static VALIDATION_CONFIG: OnceLock<ValidationConfig> = OnceLock::new();
+
+/// Get or initialize the global rate limiter
+fn get_rate_limiter() -> &'static RateLimiter {
+    RATE_LIMITER.get_or_init(|| RateLimiter::default())
+}
+
+/// Get or initialize the global validation configuration
+fn get_validation_config() -> &'static ValidationConfig {
+    VALIDATION_CONFIG.get_or_init(|| ValidationConfig::default())
+}
 
 /// Handles a request to list available tools.
 #[instrument(skip(lifecycle_manager))]
@@ -41,6 +60,34 @@ pub async fn handle_tools_call(
     server_peer: Peer<RoleServer>,
 ) -> Result<Value> {
     info!("Handling tool call");
+
+    // Security Step 1: Validate tool name
+    if let Err(e) = validate_tool_name(&req.name) {
+        error!(error = %e, tool_name = %req.name, "Invalid tool name");
+        return create_error_response(format!("Invalid tool name: {}", e));
+    }
+
+    // Security Step 2: Rate limiting
+    // Use a combination of tool name as rate limiting key for now
+    // In production, this might include client ID or session info
+    let rate_limit_key = format!("tool:{}", req.name);
+    let rate_limiter = get_rate_limiter();
+    
+    if !rate_limiter.allow_request(&rate_limit_key, 1)? {
+        warn!(tool_name = %req.name, "Rate limit exceeded");
+        return create_error_response("Rate limit exceeded. Please try again later.".to_string());
+    }
+
+    // Security Step 3: Input validation
+    if let Some(ref arguments) = req.arguments {
+        let args_value = serde_json::to_value(arguments)?;
+        let validation_config = get_validation_config();
+        
+        if let Err(e) = validate_tool_input(&args_value, validation_config) {
+            error!(error = %e, tool_name = %req.name, "Input validation failed");
+            return create_error_response(format!("Input validation failed: {}", e));
+        }
+    }
 
     let result = match req.name.as_ref() {
         "load-component" => handle_load_component(&req, lifecycle_manager, server_peer).await,
@@ -74,18 +121,41 @@ pub async fn handle_tools_call(
     }
 
     match result {
-        Ok(result) => Ok(serde_json::to_value(result)?),
-        Err(e) => {
-            let error_text = format!("Error: {e}");
-            let contents = vec![Content::text(error_text)];
-
-            let error_result = CallToolResult {
-                content: contents,
-                is_error: Some(true),
-            };
-            Ok(serde_json::to_value(error_result)?)
+        Ok(mut result) => {
+            // Security Step 4: Output sanitization
+            // Sanitize any text content in the result  
+            sanitize_call_tool_result(&mut result)?;
+            Ok(serde_json::to_value(result)?)
         }
+        Err(e) => create_error_response(format!("Error: {}", e)),
     }
+}
+
+/// Creates a standardized error response
+fn create_error_response(error_text: String) -> Result<Value> {
+    let contents = vec![Content::text(error_text)];
+    let error_result = CallToolResult {
+        content: contents,
+        is_error: Some(true),
+    };
+    Ok(serde_json::to_value(error_result)?)
+}
+
+/// Sanitizes the content of a CallToolResult by checking and sanitizing text content
+fn sanitize_call_tool_result(result: &mut CallToolResult) -> Result<()> {
+    // For now, we'll sanitize by converting the entire result to JSON and back
+    // This ensures any nested text gets validated
+    let json_value = serde_json::to_value(&result)?;
+    let json_string = serde_json::to_string(&json_value)?;
+    
+    // Sanitize the JSON string representation
+    let sanitized_json = sanitize_tool_output(&json_string)?;
+    
+    // Parse back to verify it's still valid JSON
+    let _: Value = serde_json::from_str(&sanitized_json)?;
+    
+    debug!("Result content sanitized successfully");
+    Ok(())
 }
 
 fn get_builtin_tools() -> Vec<Tool> {

@@ -241,7 +241,18 @@ pub(crate) fn extract_args_from_request(
     let params_value = serde_json::to_value(&req.arguments)?;
 
     match params_value {
-        Value::Object(map) => Ok(map),
+        Value::Object(map) => {
+            // Additional validation: check for null keys or values
+            for (key, value) in &map {
+                if key.is_empty() {
+                    return Err(anyhow::anyhow!("Empty parameter key not allowed"));
+                }
+                if value.is_null() {
+                    debug!("Null value found for parameter key: {}", key);
+                }
+            }
+            Ok(map)
+        }
         _ => Err(anyhow::anyhow!(
             "Parameters are not in expected object format"
         )),

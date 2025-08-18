@@ -6,6 +6,7 @@ pub use wassette::LifecycleManager;
 mod components;
 mod prompts;
 mod resources;
+pub mod security;
 mod tools;
 
 pub use prompts::handle_prompts_list;
