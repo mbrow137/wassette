@@ -16,7 +16,7 @@ use crate::components::{
     handle_load_component, handle_unload_component,
 };
 use crate::security::{
-    RateLimiter, ValidationConfig, sanitize_tool_output, validate_tool_input, validate_tool_name,
+    sanitize_tool_output, validate_tool_input, validate_tool_name, RateLimiter, ValidationConfig,
 };
 
 /// Global rate limiter instance
@@ -72,7 +72,7 @@ pub async fn handle_tools_call(
     // In production, this might include client ID or session info
     let rate_limit_key = format!("tool:{}", req.name);
     let rate_limiter = get_rate_limiter();
-    
+
     if !rate_limiter.allow_request(&rate_limit_key, 1)? {
         warn!(tool_name = %req.name, "Rate limit exceeded");
         return create_error_response("Rate limit exceeded. Please try again later.".to_string());
@@ -82,7 +82,7 @@ pub async fn handle_tools_call(
     if let Some(ref arguments) = req.arguments {
         let args_value = serde_json::to_value(arguments)?;
         let validation_config = get_validation_config();
-        
+
         if let Err(e) = validate_tool_input(&args_value, validation_config) {
             error!(error = %e, tool_name = %req.name, "Input validation failed");
             return create_error_response(format!("Input validation failed: {}", e));
@@ -123,7 +123,7 @@ pub async fn handle_tools_call(
     match result {
         Ok(mut result) => {
             // Security Step 4: Output sanitization
-            // Sanitize any text content in the result  
+            // Sanitize any text content in the result
             sanitize_call_tool_result(&mut result)?;
             Ok(serde_json::to_value(result)?)
         }
@@ -147,13 +147,13 @@ fn sanitize_call_tool_result(result: &mut CallToolResult) -> Result<()> {
     // This ensures any nested text gets validated
     let json_value = serde_json::to_value(&result)?;
     let json_string = serde_json::to_string(&json_value)?;
-    
+
     // Sanitize the JSON string representation
     let sanitized_json = sanitize_tool_output(&json_string)?;
-    
+
     // Parse back to verify it's still valid JSON
     let _: Value = serde_json::from_str(&sanitized_json)?;
-    
+
     debug!("Result content sanitized successfully");
     Ok(())
 }
