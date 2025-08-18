@@ -2104,6 +2104,7 @@ name = "mcp-server"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "futures",
  "rmcp",
  "serde_json",
@@ -4920,6 +4921,7 @@ dependencies = [
  "axum",
  "built",
  "bytes",
+ "chrono",
  "clap",
  "etcetera",
  "figment",

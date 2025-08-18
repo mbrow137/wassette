@@ -12,6 +12,8 @@ use serde_json::{json, Value};
 use tracing::{debug, error, info, instrument};
 use wassette::LifecycleManager;
 
+use crate::logging::{data, McpLogger};
+
 #[instrument(skip(lifecycle_manager))]
 pub(crate) async fn get_component_tools(lifecycle_manager: &LifecycleManager) -> Result<Vec<Tool>> {
     debug!("Listing components");
@@ -52,10 +54,37 @@ pub(crate) async fn handle_load_component(
 
     info!(path, "Loading component");
 
+    // Create MCP logger for structured logging
+    let mcp_logger = McpLogger::new(
+        std::sync::Arc::new(server_peer.clone()),
+        "wassette.lifecycle".to_string(),
+    );
+
+    // Log component loading start with structured data
+    let loading_data = data::component_loading(path, None);
+    mcp_logger
+        .info("Component loading started", loading_data)
+        .await?;
+
+    let start_time = std::time::Instant::now();
     let result = lifecycle_manager.load_component(path).await;
 
     match result {
         Ok((id, _load_result)) => {
+            let execution_time_ms = start_time.elapsed().as_millis() as u64;
+
+            // Log successful component loading with performance metrics
+            mcp_logger
+                .log_component_event(
+                    "loaded",
+                    &id,
+                    serde_json::json!({
+                        "path": path,
+                        "execution_time_ms": execution_time_ms,
+                    }),
+                )
+                .await?;
+
             let status_text = serde_json::to_string(&json!({
                 "status": "component loaded",
                 "id": id
@@ -83,6 +112,28 @@ pub(crate) async fn handle_load_component(
             })
         }
         Err(e) => {
+            let _execution_time_ms = start_time.elapsed().as_millis() as u64;
+
+            // Log component loading failure with detailed error information
+            let _error_data = data::error_details(
+                "ComponentLoadError",
+                &e.to_string(),
+                true, // Component loading errors are typically recoverable
+            );
+
+            mcp_logger
+                .error(
+                    &format!("Component loading failed: {}", path),
+                    serde_json::json!({
+                        "path": path,
+                        "execution_time_ms": _execution_time_ms,
+                        "error_type": "ComponentLoadError",
+                        "error_message": e.to_string(),
+                        "recoverable": true,
+                    }),
+                )
+                .await?;
+
             error!(error = %e, path, "Failed to load component");
             Err(anyhow::anyhow!(
                 "Failed to load component: {}. Error: {}",
@@ -166,9 +217,12 @@ pub(crate) async fn handle_component_call(
             anyhow::anyhow!("Failed to find component for tool '{}': {}", method_name, e)
         })?;
 
+    let start_time = std::time::Instant::now();
     let result = lifecycle_manager
         .execute_component_call(&component_id, &method_name, &serde_json::to_string(&args)?)
         .await;
+
+    let _execution_time_ms = start_time.elapsed().as_millis() as u64;
 
     match result {
         Ok(result_str) => {

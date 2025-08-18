@@ -25,6 +25,7 @@ use rmcp::transport::streamable_http_server::StreamableHttpService;
 use rmcp::transport::{stdio as stdio_transport, SseServer};
 use rmcp::ServerHandler;
 use serde::{Deserialize, Serialize};
+use serde_json;
 use tracing_subscriber::layer::SubscriberExt as _;
 use tracing_subscriber::util::SubscriberInitExt as _;
 
@@ -135,6 +136,7 @@ impl ServerHandler for McpServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
             capabilities: ServerCapabilities {
+                logging: Some(serde_json::Map::new()),
                 tools: Some(ToolsCapability {
                     list_changed: Some(true),
                 }),
