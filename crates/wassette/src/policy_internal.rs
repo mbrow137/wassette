@@ -605,8 +605,15 @@ impl crate::LifecycleManager {
             PermissionRule::Environment(env) => {
                 self.remove_environment_permission_from_policy(policy, env)
             }
-            PermissionRule::Custom(type_name, _details) => {
-                todo!("Custom permission type '{}' not yet implemented", type_name);
+            PermissionRule::Custom(type_name, details) => {
+                if type_name == "resource" {
+                    self.remove_resource_permission_from_policy(policy, details)
+                } else {
+                    Err(anyhow!(
+                        "Custom permission type '{}' not yet implemented",
+                        type_name
+                    ))
+                }
             }
         }
     }
@@ -662,6 +669,29 @@ impl crate::LifecycleManager {
                     env_perms.allow = None;
                 }
             }
+        }
+        Ok(())
+    }
+
+    /// Remove resource permission from policy
+    fn remove_resource_permission_from_policy(
+        &self,
+        policy: &mut PolicyDocument,
+        _details: serde_json::Value,
+    ) -> Result<()> {
+        if let Some(resources) = &mut policy.permissions.resources {
+            if let Some(limits) = &mut resources.limits {
+                // For now, we remove the memory limit entirely when revoking resource permission
+                // TODO: In the future, we might want to be more granular and only remove specific limits
+                limits.memory = None;
+
+                // Clean up empty structures
+                if limits.cpu.is_none() && limits.memory.is_none() {
+                    resources.limits = None;
+                }
+            }
+            // If resources has no limits and no requests, we could remove the entire resources section
+            // but for now we keep it for forward compatibility
         }
         Ok(())
     }
@@ -1220,6 +1250,93 @@ permissions:
         let write_access = AccessType::Write;
         let serialized = serde_json::to_string(&write_access)?;
         assert_eq!(serialized, "\"write\"");
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_memory_resource_revocation() -> Result<()> {
+        let manager_result = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(async { create_test_manager().await });
+        let manager = manager_result.unwrap();
+
+        // Create a policy with memory resource limits
+        let mut policy = policy::PolicyDocument {
+            version: "1.0".to_string(),
+            description: Some("Test policy with memory limits".to_string()),
+            permissions: policy::Permissions::default(),
+        };
+
+        // First add memory resource permission
+        let resource_details = serde_json::json!({
+            "resources": {
+                "limits": {
+                    "memory": "512Mi"
+                }
+            }
+        });
+
+        manager
+            .manager
+            .add_resource_permission_to_policy(&mut policy, resource_details.clone())?;
+
+        // Verify memory limit was added
+        let resources = policy
+            .permissions
+            .resources
+            .as_ref()
+            .expect("Should have resources");
+        let limits = resources.limits.as_ref().expect("Should have limits");
+        let memory = limits.memory.as_ref().expect("Should have memory limit");
+        match memory {
+            policy::MemoryLimit::String(mem_str) => {
+                assert_eq!(mem_str, "512Mi");
+            }
+            _ => panic!("Expected string memory limit"),
+        }
+
+        // Now test removing the memory resource permission
+        manager
+            .manager
+            .remove_resource_permission_from_policy(&mut policy, resource_details)?;
+
+        // Verify memory limit was removed
+        if let Some(resources) = &policy.permissions.resources {
+            if let Some(limits) = &resources.limits {
+                assert!(limits.memory.is_none(), "Memory limit should be removed");
+            }
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_revoke_memory_resource_permission_parsing() -> Result<()> {
+        let manager = create_test_manager().await?;
+
+        // Test the permission parsing and revocation logic without requiring component compilation
+        let memory_details = serde_json::json!({"memory": "1Gi"});
+
+        // Test that we can parse the memory resource permission rule
+        let permission_rule = manager.parse_permission_rule("resource", &memory_details)?;
+
+        // Verify it creates a Custom permission rule for resource type
+        match &permission_rule {
+            PermissionRule::Custom(type_name, details) => {
+                assert_eq!(type_name, "resource");
+                // The structure should be a ResourceLimits with limits containing memory
+                assert!(details.get("limits").is_some());
+                let limits = details.get("limits").unwrap();
+                assert!(limits.get("memory").is_some());
+                let memory = limits.get("memory").unwrap();
+                assert_eq!(memory.as_str().unwrap(), "1Gi");
+            }
+            _ => panic!("Expected Custom permission rule for resource type"),
+        }
+
+        // Test validation doesn't fail for resource permissions
+        manager.validate_permission_rule(&permission_rule)?;
 
         Ok(())
     }

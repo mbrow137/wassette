@@ -36,6 +36,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - `wassette permission revoke storage <component_id> <uri>` - Revoke storage permissions
   - `wassette permission revoke network <component_id> <host>` - Revoke network permissions
   - `wassette permission revoke environment-variable <component_id> <key>` - Revoke environment variable permissions
+  - `wassette permission revoke resource <component_id> --memory` - Revoke memory resource permissions
   - `wassette permission reset <component_id>` - Reset all permissions for a component
 - **Output Formatting**: Added support for multiple output formats (JSON, YAML, table) using `--output-format` flag
 - **CLI Documentation**: Comprehensive CLI reference documentation in `docs/cli.md`
@@ -48,6 +49,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Copyright header instructions to Rust development guidelines ([#TBD](https://github.com/microsoft/wassette/pull/TBD))
 - Enhanced environment variable CLI experience with `--env` and `--env-file` options for better configuration management
 - Memory resource granting functionality for components with k8s-style memory limits ([#171](https://github.com/microsoft/wassette/pull/171))
+- Memory resource revocation functionality allowing removal of memory limits from component policies ([#171](https://github.com/microsoft/wassette/pull/171))
 - Comprehensive Go development guide for authoring Wasm components ([#163](https://github.com/microsoft/wassette/pull/163))
 - Comprehensive documentation for authoring Wasm Components with Python ([#161](https://github.com/microsoft/wassette/pull/161))
 - Detailed documentation for authoring WebAssembly Components from JavaScript/TypeScript ([#159](https://github.com/microsoft/wassette/pull/159))
