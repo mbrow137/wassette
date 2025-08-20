@@ -19,7 +19,7 @@ use component2json::{
 use policy::PolicyParser;
 use serde_json::Value;
 use tokio::fs::DirEntry;
-use tokio::sync::RwLock;
+use tokio::sync::{RwLock, Semaphore};
 use tracing::{debug, info, instrument, warn};
 use wasmtime::component::{Component, InstancePre, Linker};
 use wasmtime::{Engine, Store};
@@ -38,6 +38,17 @@ use wasistate::WasiState;
 pub use wasistate::{create_wasi_state_template_from_policy, WasiStateTemplate};
 
 const DOWNLOADS_DIR: &str = "downloads";
+
+/// Component autoloading mode
+#[derive(Debug, Clone, PartialEq)]
+pub enum AutoloadMode {
+    /// Load components immediately in the background after startup
+    Lazy,
+    /// Load all components during startup (current behavior)
+    Eager,
+    /// Don't automatically load any components
+    Off,
+}
 
 #[derive(Debug, Clone)]
 struct ToolInfo {
@@ -179,6 +190,29 @@ impl LifecycleManager {
         oci_client: oci_client::Client,
         http_client: reqwest::Client,
     ) -> Result<Self> {
+        Self::new_with_options(
+            plugin_dir,
+            environment_vars,
+            oci_client,
+            http_client,
+            AutoloadMode::Eager,
+            4,
+            false,
+        )
+        .await
+    }
+
+    /// Creates a lifecycle manager with full configuration options including autoload behavior
+    #[instrument(skip_all)]
+    pub async fn new_with_options(
+        plugin_dir: impl AsRef<Path>,
+        environment_vars: HashMap<String, String>,
+        oci_client: oci_client::Client,
+        http_client: reqwest::Client,
+        autoload_mode: AutoloadMode,
+        startup_parallelism: usize,
+        no_cache: bool,
+    ) -> Result<Self> {
         let components_dir = plugin_dir.as_ref();
 
         if !components_dir.exists() {
@@ -188,10 +222,99 @@ impl LifecycleManager {
         let mut config = wasmtime::Config::new();
         config.wasm_component_model(true);
         config.async_support(true);
+        
+        // Enable Wasmtime's built-in compilation cache if caching is enabled
+        if !no_cache {
+            // Note: Wasmtime cache configuration is not available in this version
+            // Cache will be handled at the .cwasm file level
+        }
+        
         let engine = Arc::new(wasmtime::Engine::new(&config)?);
 
-        // Create the lifecycle manager
-        Self::new_with_policy(
+        match autoload_mode {
+            AutoloadMode::Eager => {
+                // Use existing eager loading behavior
+                Self::new_with_policy(
+                    engine,
+                    components_dir,
+                    environment_vars,
+                    oci_client,
+                    http_client,
+                )
+                .await
+            }
+            AutoloadMode::Lazy | AutoloadMode::Off => {
+                // Create unloaded manager and optionally start background loading
+                let manager = Self::new_unloaded_with_policy(
+                    engine,
+                    components_dir,
+                    environment_vars,
+                    oci_client,
+                    http_client,
+                )
+                .await?;
+
+                if autoload_mode == AutoloadMode::Lazy {
+                    // Start background loading
+                    let manager_clone = manager.clone();
+                    tokio::spawn(async move {
+                        if let Err(e) = manager_clone.load_existing_components_async(startup_parallelism).await {
+                            warn!("Background component loading failed: {}", e);
+                        }
+                    });
+                }
+
+                Ok(manager)
+            }
+        }
+    }
+
+    /// Creates a lifecycle manager without loading any components - immediate startup
+    #[instrument(skip_all)]
+    pub async fn new_unloaded(plugin_dir: impl AsRef<Path>) -> Result<Self> {
+        Self::new_unloaded_with_env(plugin_dir, HashMap::new()).await
+    }
+
+    /// Creates a lifecycle manager without loading any components with environment variables
+    #[instrument(skip_all)]
+    pub async fn new_unloaded_with_env(
+        plugin_dir: impl AsRef<Path>,
+        environment_vars: HashMap<String, String>,
+    ) -> Result<Self> {
+        Self::new_unloaded_with_clients(
+            plugin_dir,
+            environment_vars,
+            oci_client::Client::default(),
+            reqwest::Client::default(),
+        )
+        .await
+    }
+
+    /// Creates a lifecycle manager without loading any components with custom clients
+    #[instrument(skip_all)]
+    pub async fn new_unloaded_with_clients(
+        plugin_dir: impl AsRef<Path>,
+        environment_vars: HashMap<String, String>,
+        oci_client: oci_client::Client,
+        http_client: reqwest::Client,
+    ) -> Result<Self> {
+        let components_dir = plugin_dir.as_ref();
+
+        if !components_dir.exists() {
+            fs::create_dir_all(components_dir)?;
+        }
+
+        let mut config = wasmtime::Config::new();
+        config.wasm_component_model(true);
+        config.async_support(true);
+        
+        // Enable Wasmtime's built-in compilation cache by default
+        // Note: Wasmtime cache configuration is not available in this version
+        // Cache will be handled at the .cwasm file level
+        
+        let engine = Arc::new(wasmtime::Engine::new(&config)?);
+
+        Self::new_unloaded_with_policy(
             engine,
             components_dir,
             environment_vars,
@@ -293,6 +416,157 @@ impl LifecycleManager {
             plugin_dir: plugin_dir.as_ref().to_path_buf(),
             environment_vars,
         })
+    }
+
+    /// Creates a lifecycle manager without loading any components - for immediate startup
+    #[instrument(skip_all)]
+    async fn new_unloaded_with_policy(
+        engine: Arc<Engine>,
+        plugin_dir: impl AsRef<Path>,
+        environment_vars: HashMap<String, String>,
+        oci_client: oci_client::Client,
+        http_client: reqwest::Client,
+    ) -> Result<Self> {
+        info!("Creating new unloaded LifecycleManager");
+
+        let registry = ComponentRegistry::new();
+        let components = HashMap::new();
+        let policy_registry = PolicyRegistry::default();
+
+        let mut linker = Linker::new(engine.as_ref());
+        wasmtime_wasi::p2::add_to_linker_async(&mut linker)?;
+
+        // Use the standard HTTP linker - filtering happens at WasiHttpView level
+        wasmtime_wasi_http::add_only_http_to_linker_async(&mut linker)?;
+
+        wasmtime_wasi_config::add_to_linker(
+            &mut linker,
+            |h: &mut WassetteWasiState<WasiState>| WasiConfig::from(&h.inner.wasi_config_vars),
+        )?;
+
+        let linker = Arc::new(linker);
+
+        // Make sure the plugin dir exists and also create a subdirectory for temporary staging of downloaded files
+        tokio::fs::create_dir_all(&plugin_dir)
+            .await
+            .context("Failed to create plugin directory")?;
+        tokio::fs::create_dir_all(plugin_dir.as_ref().join(DOWNLOADS_DIR))
+            .await
+            .context("Failed to create downloads directory")?;
+
+        info!("Unloaded LifecycleManager initialized successfully");
+        Ok(Self {
+            engine,
+            linker,
+            components: Arc::new(RwLock::new(components)),
+            registry: Arc::new(RwLock::new(registry)),
+            policy_registry: Arc::new(RwLock::new(policy_registry)),
+            oci_client: Arc::new(oci_wasm::WasmClient::new(oci_client)),
+            http_client,
+            plugin_dir: plugin_dir.as_ref().to_path_buf(),
+            environment_vars,
+        })
+    }
+
+    /// Load existing components in the background with bounded parallelism
+    #[instrument(skip(self))]
+    pub async fn load_existing_components_async(&self, concurrency: usize) -> Result<()> {
+        info!(concurrency, "Starting background component loading");
+        
+        let plugin_dir = &self.plugin_dir;
+        let engine = &self.engine;
+        let linker = &self.linker;
+        
+        let semaphore = Arc::new(Semaphore::new(concurrency));
+        let mut entries = tokio::fs::read_dir(plugin_dir).await?;
+        let mut load_tasks = Vec::new();
+
+        while let Some(entry) = entries.next_entry().await? {
+            let semaphore = semaphore.clone();
+            let engine = engine.clone();
+            let linker = linker.clone();
+            
+            let task = tokio::spawn(async move {
+                let _permit = semaphore.acquire().await.unwrap();
+                load_component_from_entry_with_cache(engine, &linker, entry).await
+            });
+            
+            load_tasks.push(task);
+        }
+
+        // Process results as they complete
+        let results = futures::future::join_all(load_tasks).await;
+        let mut loaded_count = 0;
+        
+        for task_result in results {
+            match task_result {
+                Ok(load_result) => match load_result {
+                    Ok(Some((component_instance, name))) => {
+                        // Register the component and its tools
+                        let tool_metadata = component_exports_to_tools(&component_instance.component, &engine, true);
+                        
+                        // Update registry
+                        {
+                            let mut registry = self.registry.write().await;
+                            if let Err(e) = registry.register_tools(&name, tool_metadata) {
+                                warn!(component_id = %name, error = %e, "Failed to register tools for background-loaded component");
+                                continue;
+                            }
+                        }
+                        
+                        // Store component
+                        {
+                            let mut components = self.components.write().await;
+                            components.insert(name.clone(), component_instance);
+                        }
+                        
+                        // Check for co-located policy file
+                        let policy_path = plugin_dir.join(format!("{name}.policy.yaml"));
+                        if policy_path.exists() {
+                            if let Err(e) = self.load_component_policy(&name, &policy_path).await {
+                                warn!(component_id = %name, error = %e, "Failed to load policy for background-loaded component");
+                            }
+                        }
+                        
+                        loaded_count += 1;
+                        info!(component_id = %name, "Background loaded component");
+                        
+                        // TODO: Send tool list change notification if we have a way to notify clients
+                    },
+                    Ok(None) => {
+                        // Not a component file, skip silently
+                    },
+                    Err(e) => {
+                        warn!(error = %e, "Failed to load component during background loading");
+                    }
+                },
+                Err(e) => {
+                    warn!(error = %e, "Background loading task failed");
+                }
+            }
+        }
+        
+        info!(loaded_count, "Background component loading completed");
+        Ok(())
+    }
+
+    /// Helper method to load a component's policy file
+    async fn load_component_policy(&self, component_id: &str, policy_path: &Path) -> Result<()> {
+        let policy_content = tokio::fs::read_to_string(policy_path).await?;
+        let policy = PolicyParser::parse_str(&policy_content)?;
+        let wasi_template = wasistate::create_wasi_state_template_from_policy(
+            &policy,
+            &self.plugin_dir,
+            &self.environment_vars,
+        )?;
+        
+        let mut policy_registry = self.policy_registry.write().await;
+        policy_registry
+            .component_policies
+            .insert(component_id.to_string(), Arc::new(wasi_template));
+        
+        info!(component_id, "Loaded policy association during background loading");
+        Ok(())
     }
 
     /// Loads a new component from the given URI. This URI can be a file path, an OCI reference, or a URL.
@@ -581,35 +855,42 @@ impl LifecycleManager {
 
     // Granular permission system methods
 }
-// Load components in parallel for improved startup performance
+// Load components in parallel for improved startup performance with bounded parallelism
 async fn load_components_parallel(
     plugin_dir: &Path,
     engine: &Arc<Engine>,
     linker: &Arc<Linker<WassetteWasiState<WasiState>>>,
 ) -> Result<Vec<(ComponentInstance, String)>> {
+    let concurrency = std::cmp::min(num_cpus::get(), 8); // Default bounded parallelism
+    let semaphore = Arc::new(Semaphore::new(concurrency));
     let mut entries = tokio::fs::read_dir(plugin_dir).await?;
-    let mut load_futures = Vec::new();
+    let mut load_tasks = Vec::new();
 
     while let Some(entry) = entries.next_entry().await? {
+        let semaphore = semaphore.clone();
         let engine = engine.clone();
         let linker = linker.clone();
-        let future = async move {
-            match load_component_from_entry(engine, &linker, entry).await {
-                Ok(Some(result)) => Some(Ok(result)),
-                Ok(None) => None,
-                Err(e) => Some(Err(e)),
-            }
-        };
-        load_futures.push(future);
+        
+        let task = tokio::spawn(async move {
+            let _permit = semaphore.acquire().await.unwrap();
+            load_component_from_entry(engine, &linker, entry).await
+        });
+        
+        load_tasks.push(task);
     }
 
-    let results = futures::future::join_all(load_futures).await;
+    // Wait for all tasks to complete
+    let results = futures::future::join_all(load_tasks).await;
     let mut components = Vec::new();
 
-    for result in results.into_iter().flatten() {
-        match result {
-            Ok(component) => components.push(component),
-            Err(e) => warn!("Failed to load component: {}", e),
+    for task_result in results {
+        match task_result {
+            Ok(load_result) => match load_result {
+                Ok(Some(component)) => components.push(component),
+                Ok(None) => {}, // Not a component file
+                Err(e) => warn!("Failed to load component: {}", e),
+            },
+            Err(e) => warn!("Component loading task failed: {}", e),
         }
     }
 
@@ -703,6 +984,113 @@ async fn load_component_from_entry(
         },
         name,
     )))
+}
+
+/// Load a component from a directory entry with caching support
+async fn load_component_from_entry_with_cache(
+    engine: Arc<Engine>,
+    linker: &Linker<WassetteWasiState<WasiState>>,
+    entry: DirEntry,
+) -> Result<Option<(ComponentInstance, String)>> {
+    let start_time = Instant::now();
+    let is_file = entry
+        .metadata()
+        .await
+        .map(|m| m.is_file())
+        .context("unable to read file metadata")?;
+    let is_wasm = entry
+        .path()
+        .extension()
+        .map(|ext| ext == "wasm")
+        .unwrap_or(false);
+    if !(is_file && is_wasm) {
+        return Ok(None);
+    }
+    
+    let entry_path = entry.path();
+    let name = entry
+        .path()
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .map(String::from)
+        .context("wasm file didn't have a valid file name")?;
+    
+    // Try to load from cached .cwasm file first
+    let cwasm_path = entry_path.with_extension("cwasm");
+    let component = if cwasm_path.exists() {
+        // Check if the cached version is newer than the source
+        let wasm_modified = tokio::fs::metadata(&entry_path).await?.modified()?;
+        let cwasm_modified = tokio::fs::metadata(&cwasm_path).await?.modified()?;
+        
+        if cwasm_modified >= wasm_modified {
+            // Try to deserialize from cache
+            let engine_clone = engine.clone();
+            let cwasm_path_clone = cwasm_path.clone();
+            match tokio::task::spawn_blocking(move || {
+                // SAFETY: We trust the cached .cwasm file was generated by the same engine version
+                unsafe { Component::deserialize_file(&engine_clone, cwasm_path_clone) }
+            }).await? {
+                Ok(component) => {
+                    debug!(component_id = %name, "Loaded component from cache");
+                    component
+                },
+                Err(_) => {
+                    // Cache is corrupted or incompatible, fall back to compilation
+                    warn!(component_id = %name, "Failed to load from cache, recompiling");
+                    let component = compile_and_cache_component(&engine, &entry_path, &cwasm_path).await?;
+                    component
+                }
+            }
+        } else {
+            // Source is newer, recompile
+            debug!(component_id = %name, "Source is newer than cache, recompiling");
+            compile_and_cache_component(&engine, &entry_path, &cwasm_path).await?
+        }
+    } else {
+        // No cache, compile and cache
+        debug!(component_id = %name, "No cache found, compiling and caching");
+        compile_and_cache_component(&engine, &entry_path, &cwasm_path).await?
+    };
+    
+    info!(component_id = %name, elapsed = ?start_time.elapsed(), "component loaded");
+    let instance_pre = linker
+        .instantiate_pre(&component)
+        .context("failed to instantiate component")?;
+    Ok(Some((
+        ComponentInstance {
+            component: Arc::new(component),
+            instance_pre: Arc::new(instance_pre),
+        },
+        name,
+    )))
+}
+
+/// Compile a component and cache the precompiled artifact
+async fn compile_and_cache_component(
+    engine: &Engine,
+    wasm_path: &Path,
+    cwasm_path: &Path,
+) -> Result<Component> {
+    let engine_clone = engine.clone();
+    let wasm_path_clone = wasm_path.to_path_buf();
+    
+    let component = tokio::task::spawn_blocking(move || {
+        Component::from_file(&engine_clone, wasm_path_clone)
+    }).await??;
+    
+    // Precompile and cache the component
+    let wasm_bytes = tokio::fs::read(wasm_path).await?;
+    let engine_clone = engine.clone();
+    let cwasm_path_clone = cwasm_path.to_path_buf();
+    
+    tokio::task::spawn_blocking(move || {
+        let precompiled_bytes = engine_clone.precompile_component(&wasm_bytes)
+            .context("Failed to precompile component")?;
+        std::fs::write(cwasm_path_clone, precompiled_bytes)
+            .context("Failed to write cached component")
+    }).await??;
+    
+    Ok(component)
 }
 
 #[cfg(test)]

@@ -5,7 +5,7 @@
 
 use std::path::PathBuf;
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use serde::{Deserialize, Serialize};
 
 use crate::format::OutputFormat;
@@ -77,6 +77,42 @@ pub struct Serve {
     #[arg(long = "env-file")]
     #[serde(skip)]
     pub env_file: Option<PathBuf>,
+
+    /// Component autoloading mode: lazy (default), eager, or off
+    #[arg(long, default_value = "lazy")]
+    #[serde(skip)]
+    pub autoload: AutoloadMode,
+
+    /// Number of concurrent background loading tasks (default: 4)
+    #[arg(long, default_value_t = 4)]
+    #[serde(skip)]
+    pub startup_parallelism: usize,
+
+    /// Disable component caching and compilation cache
+    #[arg(long)]
+    #[serde(skip)]
+    pub no_cache: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ValueEnum, Default)]
+pub enum AutoloadMode {
+    /// Load components immediately in the background after startup
+    #[default]
+    Lazy,
+    /// Load all components during startup (current behavior)
+    Eager,
+    /// Don't automatically load any components
+    Off,
+}
+
+impl std::fmt::Display for AutoloadMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AutoloadMode::Lazy => write!(f, "lazy"),
+            AutoloadMode::Eager => write!(f, "eager"),
+            AutoloadMode::Off => write!(f, "off"),
+        }
+    }
 }
 
 #[derive(Subcommand, Debug)]

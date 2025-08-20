@@ -18,8 +18,8 @@ use mcp_server::components::{
 use mcp_server::tools::*;
 use mcp_server::{
     handle_prompts_list, handle_resources_list, handle_tools_call, handle_tools_list,
-    LifecycleManager,
 };
+use wassette::LifecycleManager;
 use rmcp::model::{
     CallToolRequestParam, CallToolResult, ErrorData, ListPromptsResult, ListResourcesResult,
     ListToolsResult, PaginatedRequestParam, ServerCapabilities, ServerInfo, ToolsCapability,
@@ -38,7 +38,7 @@ mod config;
 mod format;
 
 use commands::{
-    Cli, Commands, ComponentCommands, GrantPermissionCommands, PermissionCommands, PolicyCommands,
+    AutoloadMode, Cli, Commands, ComponentCommands, GrantPermissionCommands, PermissionCommands, PolicyCommands,
     RevokePermissionCommands, Serve,
 };
 use format::{print_result, OutputFormat};
@@ -257,6 +257,9 @@ async fn create_lifecycle_manager(plugin_dir: Option<PathBuf>) -> Result<Lifecyc
             streamable_http: false,
             env_vars: vec![],
             env_file: None,
+            autoload: AutoloadMode::Lazy,
+            startup_parallelism: 4,
+            no_cache: false,
         })
         .context("Failed to load configuration")?
     };
@@ -460,9 +463,22 @@ async fn main() -> Result<()> {
                 let config =
                     config::Config::from_serve(cfg).context("Failed to load configuration")?;
 
-                let lifecycle_manager =
-                    LifecycleManager::new_with_env(&config.plugin_dir, config.environment_vars)
-                        .await?;
+                // Convert CLI AutoloadMode to library AutoloadMode  
+                let autoload_mode = match cfg.autoload {
+                    commands::AutoloadMode::Lazy => wassette::AutoloadMode::Lazy,
+                    commands::AutoloadMode::Eager => wassette::AutoloadMode::Eager,
+                    commands::AutoloadMode::Off => wassette::AutoloadMode::Off,
+                };
+
+                let lifecycle_manager = LifecycleManager::new_with_options(
+                    &config.plugin_dir, 
+                    config.environment_vars,
+                    oci_client::Client::default(),
+                    reqwest::Client::default(),
+                    autoload_mode,
+                    cfg.startup_parallelism,
+                    cfg.no_cache,
+                ).await?;
 
                 let server = McpServer::new(lifecycle_manager);
 

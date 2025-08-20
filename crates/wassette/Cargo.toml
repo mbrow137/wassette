@@ -10,6 +10,7 @@ component2json = { path = "../component2json" }
 futures = { workspace = true }
 http = "1.0"
 hyper = { version = "1.7", features = ["client"] }
+num_cpus = { workspace = true }
 oci-client = { workspace = true }
 oci-wasm = { workspace = true }
 policy = { workspace = true }

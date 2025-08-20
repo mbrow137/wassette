@@ -119,6 +119,9 @@ mod tests {
             streamable_http: false,
             env_vars: vec![],
             env_file: None,
+            autoload: crate::commands::AutoloadMode::Lazy,
+            startup_parallelism: 4,
+            no_cache: false,
         }
     }
 
@@ -130,6 +133,9 @@ mod tests {
             streamable_http: false,
             env_vars: vec![],
             env_file: None,
+            autoload: crate::commands::AutoloadMode::Lazy,
+            startup_parallelism: 4,
+            no_cache: false,
         }
     }
 
