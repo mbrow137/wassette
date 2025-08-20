@@ -16,6 +16,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Major Documentation Restructuring**: Comprehensive reorganization and expansion of documentation to improve usability and developer experience ([#206](https://github.com/microsoft/wassette/pull/206))
+  - **New Quickstart Guide**: Step-by-step getting started guide with AI agent setup
+  - **Core Concepts Section**: Detailed explanations of Wassette, WebAssembly Components, and Model Context Protocol
+  - **Security Documentation**: Comprehensive security model, sandboxing, and permission system guides
+  - **Development Guides**: Enhanced language-specific guides (JavaScript, Rust, Python, Go) with testing and best practices
+  - **Architecture Documentation**: Component lifecycle and runtime design guides
+  - **Cookbook Section**: Practical examples and patterns for common use cases
+  - **Reference Documentation**: Built-in tools, CLI reference, configuration, and FAQ
+  - **Contributing Guide**: Detailed contribution guidelines and development setup
 - GitHub Actions workflow to automatically build and deploy mdBook documentation to GitHub Pages ([#196](https://github.com/microsoft/wassette/pull/196))
 - Dependabot automerge workflow for automated dependency updates when CI passes ([#TBD](https://github.com/microsoft/wassette/pull/TBD))
 - Documentation for built-in tools in README, listing all 11 available tools with descriptions for better discoverability ([#TBD](https://github.com/microsoft/wassette/pull/TBD))
