@@ -141,7 +141,7 @@ pub enum MemoryLimit {
 }
 
 /// Resource limit values under the limits section
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct ResourceLimitValues {
     /// CPU limit in k8s format (millicores "500m" or cores "1")
     pub cpu: Option<CpuLimit>,
@@ -156,7 +156,7 @@ pub struct ResourceLimitValues {
 }
 
 /// Resource limits configuration
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct ResourceLimits {
     /// Resource limits in k8s-style format
     pub limits: Option<ResourceLimitValues>,
@@ -329,12 +329,6 @@ impl MemoryLimit {
     }
 }
 
-impl Default for ResourceLimitValues {
-    fn default() -> Self {
-        Self::new(None, None)
-    }
-}
-
 impl ResourceLimitValues {
     /// Create a new ResourceLimitValues instance
     pub fn new(cpu: Option<CpuLimit>, memory: Option<MemoryLimit>) -> Self {
@@ -386,17 +380,6 @@ impl ResourceLimitValues {
         self.cpu_cores()?;
         self.memory_bytes()?;
         Ok(())
-    }
-}
-
-impl Default for ResourceLimits {
-    fn default() -> Self {
-        Self {
-            limits: None,
-            cpu: None,
-            memory: None,
-            io: None,
-        }
     }
 }
 
