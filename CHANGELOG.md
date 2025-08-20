@@ -27,6 +27,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - `wassette permission revoke network <component_id> <host>` - Revoke network permissions
   - `wassette permission revoke environment-variable <component_id> <key>` - Revoke environment variable permissions
   - `wassette permission reset <component_id>` - Reset all permissions for a component
+- **Secret Management System**: Simple, per-component secrets mechanism that persists across runs without requiring server restart
+  - `wassette secret list <component_id> [--show-values]` - List secrets for a component with optional value display
+  - `wassette secret set <component_id> KEY=VALUE [KEY=VALUE...]` - Set multiple secrets for a component
+  - `wassette secret delete <component_id> KEY [KEY...]` - Delete specific secret keys from a component
+  - Secrets stored as YAML files in `~/.config/wassette/secrets/` with proper permissions (0700)
+  - Lazy loading with mtime-based caching for optimal performance
+  - Environment variable injection during component execution with proper precedence handling
+  - Cross-platform directory support and component ID sanitization for safe filenames
+  - Protection against overriding critical system variables (PATH, HOME, etc.)
 - **Output Formatting**: Added support for multiple output formats (JSON, YAML, table) using `--output-format` flag
 - **CLI Documentation**: Comprehensive CLI reference documentation in `docs/cli.md`
 - Copyright header instructions to Rust development guidelines ([#TBD](https://github.com/microsoft/wassette/pull/TBD))
