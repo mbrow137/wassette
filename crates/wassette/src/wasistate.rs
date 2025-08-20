@@ -183,11 +183,16 @@ pub fn create_wasi_state_template_from_policy(
     let preopened_dirs = extract_storage_permissions(policy, plugin_dir)?;
     let allowed_hosts = extract_allowed_hosts(policy);
     let memory_limit = extract_memory_limit(policy)?;
-    let store_limits = memory_limit.map(|limit| {
-        wasmtime::StoreLimitsBuilder::new()
-            .memory_size(limit.try_into().unwrap_or(usize::MAX))
-            .build()
-    });
+    let store_limits = memory_limit
+        .map(|limit| -> anyhow::Result<wasmtime::StoreLimits> {
+            let limit_usize = limit.try_into().map_err(|_| {
+                anyhow::anyhow!("Memory limit {} too large for target architecture", limit)
+            })?;
+            Ok(wasmtime::StoreLimitsBuilder::new()
+                .memory_size(limit_usize)
+                .build())
+        })
+        .transpose()?;
 
     Ok(WasiStateTemplate {
         network_perms,

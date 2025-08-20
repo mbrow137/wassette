@@ -262,9 +262,13 @@ impl CpuLimit {
 }
 
 impl MemoryLimit {
+    // Memory limit bounds: minimum 64KB, maximum 64GB (reasonable for WASM components)
+    const MIN_MEMORY_BYTES: u64 = 64 * 1024; // 64KB
+    const MAX_MEMORY_BYTES: u64 = 64u64 * 1024 * 1024 * 1024; // 64GB
+
     /// Validate and convert memory limit to bytes
     pub fn to_bytes(&self) -> PolicyResult<u64> {
-        match self {
+        let bytes = match self {
             MemoryLimit::String(s) => {
                 if s.is_empty() {
                     bail!("Memory limit string cannot be empty");
@@ -287,16 +291,41 @@ impl MemoryLimit {
                     .parse()
                     .map_err(|_| anyhow::anyhow!("Invalid memory value: {}", s))?;
 
+                if value == 0 {
+                    bail!("Memory limit cannot be zero: {}", s);
+                }
+
                 value
                     .checked_mul(multiplier)
-                    .ok_or_else(|| anyhow::anyhow!("Memory value too large: {}", s))
+                    .ok_or_else(|| anyhow::anyhow!("Memory value too large: {}", s))?
             }
             MemoryLimit::Number(n) => {
+                if *n == 0 {
+                    bail!("Memory limit cannot be zero");
+                }
                 // Assume legacy numeric values are in MB
                 n.checked_mul(1024 * 1024)
-                    .ok_or_else(|| anyhow::anyhow!("Memory value too large: {}", n))
+                    .ok_or_else(|| anyhow::anyhow!("Memory value too large: {}", n))?
             }
+        };
+
+        // Validate bounds
+        if bytes < Self::MIN_MEMORY_BYTES {
+            bail!(
+                "Memory limit {} bytes is below minimum {} KB",
+                bytes,
+                Self::MIN_MEMORY_BYTES / 1024
+            );
         }
+        if bytes > Self::MAX_MEMORY_BYTES {
+            bail!(
+                "Memory limit {} bytes exceeds maximum {} GB",
+                bytes,
+                Self::MAX_MEMORY_BYTES / (1024 * 1024 * 1024)
+            );
+        }
+
+        Ok(bytes)
     }
 }
 
@@ -735,13 +764,16 @@ mod tests {
         let memory_gi = MemoryLimit::String("2Gi".to_string());
         assert_eq!(memory_gi.to_bytes().unwrap(), 2 * 1024 * 1024 * 1024);
 
-        // Test Ti format
-        let memory_ti = MemoryLimit::String("1Ti".to_string());
-        assert_eq!(memory_ti.to_bytes().unwrap(), 1024u64 * 1024 * 1024 * 1024);
+        // Test Gi format (larger value)
+        let memory_gi_large = MemoryLimit::String("32Gi".to_string());
+        assert_eq!(
+            memory_gi_large.to_bytes().unwrap(),
+            32u64 * 1024 * 1024 * 1024
+        );
 
-        // Test plain bytes
-        let memory_bytes = MemoryLimit::String("1024".to_string());
-        assert_eq!(memory_bytes.to_bytes().unwrap(), 1024);
+        // Test plain bytes (above minimum)
+        let memory_bytes = MemoryLimit::String("131072".to_string()); // 128KB
+        assert_eq!(memory_bytes.to_bytes().unwrap(), 131072);
 
         // Test numeric format (legacy, assumes MB)
         let memory_numeric = MemoryLimit::Number(512);
@@ -756,6 +788,21 @@ mod tests {
 
         let invalid_number = MemoryLimit::String("invalidMi".to_string());
         assert!(invalid_number.to_bytes().is_err());
+
+        // Test bounds validation - too small
+        let too_small = MemoryLimit::String("32Ki".to_string()); // 32KB < 64KB minimum
+        assert!(too_small.to_bytes().is_err());
+
+        // Test bounds validation - zero
+        let zero_bytes = MemoryLimit::String("0".to_string());
+        assert!(zero_bytes.to_bytes().is_err());
+
+        let zero_numeric = MemoryLimit::Number(0);
+        assert!(zero_numeric.to_bytes().is_err());
+
+        // Test bounds validation - too large (128GB > 64GB maximum)
+        let too_large = MemoryLimit::String("128Gi".to_string());
+        assert!(too_large.to_bytes().is_err());
     }
 
     #[test]

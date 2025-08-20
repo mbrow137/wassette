@@ -300,14 +300,18 @@ impl crate::LifecycleManager {
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| anyhow!("Missing 'memory' field for resource permission"))?;
 
-                // Store as a custom rule with the specific structure expected by the policy system
-                let resource_details = serde_json::json!({
-                    "resources": {
-                        "limits": {
-                            "memory": memory
-                        }
-                    }
-                });
+                // Create structured resource limits instead of hardcoded JSON
+                let resource_limits = policy::ResourceLimits {
+                    limits: Some(policy::ResourceLimitValues::new(
+                        None,
+                        Some(policy::MemoryLimit::String(memory.to_string())),
+                    )),
+                    ..Default::default()
+                };
+
+                // Convert to JSON for storage in PermissionRule::Custom
+                let resource_details = serde_json::to_value(resource_limits)
+                    .map_err(|e| anyhow!("Failed to serialize resource limits: {}", e))?;
                 PermissionRule::Custom("resource".to_string(), resource_details)
             }
             other => {

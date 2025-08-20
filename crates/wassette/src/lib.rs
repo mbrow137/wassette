@@ -518,8 +518,11 @@ impl LifecycleManager {
         if resource_limiter.is_some() {
             store.limiter(|state: &mut WassetteWasiState<WasiState>| {
                 // Extract the resource limiter from the inner state
-                // We know it exists because we checked above
-                state.inner.resource_limiter.as_mut().unwrap()
+                state
+                    .inner
+                    .resource_limiter
+                    .as_mut()
+                    .expect("Resource limiter should be present - checked above")
             });
         }
 
