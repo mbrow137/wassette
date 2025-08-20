@@ -170,10 +170,10 @@ impl LifecycleManager {
         let mut config = wasmtime::Config::new();
         config.wasm_component_model(true);
         config.async_support(true);
-        
+
         // Enable fuel consumption for CPU limiting
         config.consume_fuel(true);
-        
+
         let engine = Arc::new(wasmtime::Engine::new(&config)?);
 
         // Create the lifecycle manager
@@ -497,10 +497,12 @@ impl LifecycleManager {
         let policy_template = self.get_policy_template_for_component(component_id).await;
 
         let mut store = Store::new(self.engine.as_ref(), state);
-        
+
         // Apply CPU fuel limit if specified in policy
         if let Some(fuel_limit) = policy_template.cpu_fuel_limit {
-            store.set_fuel(fuel_limit).context("Failed to set fuel limit")?;
+            store
+                .set_fuel(fuel_limit)
+                .context("Failed to set fuel limit")?;
         }
 
         let instance = component
@@ -1240,7 +1242,7 @@ permissions:
     #[test(tokio::test)]
     async fn test_cpu_limits_end_to_end() -> Result<()> {
         let manager = create_test_manager().await?;
-        
+
         // Create a policy document with CPU limits and save it
         let policy_content = r#"
 version: "1.0"
@@ -1252,14 +1254,14 @@ permissions:
 "#;
         let policy_path = manager.plugin_dir.join("test_cpu_component.policy.yaml");
         tokio::fs::write(&policy_path, policy_content).await?;
-        
+
         // Parse the policy and create WASI state template
         let policy = policy::PolicyParser::parse_str(policy_content)?;
         let template = crate::create_wasi_state_template_from_policy(&policy, &manager.plugin_dir)?;
-        
+
         // Verify CPU limits are properly extracted
         assert_eq!(template.cpu_fuel_limit, Some(500_000)); // 500m = 500,000 fuel units
-        
+
         Ok(())
     }
 }

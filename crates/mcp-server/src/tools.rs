@@ -56,9 +56,7 @@ pub async fn handle_tools_call(
         "grant-environment-variable-permission" => {
             handle_grant_environment_variable_permission(&req, lifecycle_manager).await
         }
-        "grant-cpu-permission" => {
-            handle_grant_cpu_permission(&req, lifecycle_manager).await
-        }
+        "grant-cpu-permission" => handle_grant_cpu_permission(&req, lifecycle_manager).await,
         "revoke-storage-permission" => {
             handle_revoke_storage_permission(&req, lifecycle_manager).await
         }

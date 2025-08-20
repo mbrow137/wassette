@@ -165,14 +165,14 @@ pub(crate) fn extract_cpu_fuel_limit(policy: &PolicyDocument) -> anyhow::Result<
                 return Ok(Some(fuel_units));
             }
         }
-        
+
         // Fall back to legacy CPU field for backward compatibility
         if let Some(cpu_cores) = resources.cpu {
             let fuel_units = (cpu_cores * 1_000_000.0) as u64;
             return Ok(Some(fuel_units));
         }
     }
-    
+
     Ok(None)
 }
 
@@ -636,7 +636,7 @@ permissions:
 "#;
         let policy = PolicyParser::parse_str(yaml_content).unwrap();
         let cpu_fuel_limit = extract_cpu_fuel_limit(&policy).unwrap();
-        
+
         // 500m = 0.5 cores = 500,000 fuel units
         assert_eq!(cpu_fuel_limit, Some(500_000));
     }
@@ -653,7 +653,7 @@ permissions:
 "#;
         let policy = PolicyParser::parse_str(yaml_content).unwrap();
         let cpu_fuel_limit = extract_cpu_fuel_limit(&policy).unwrap();
-        
+
         // 2.0 cores = 2,000,000 fuel units
         assert_eq!(cpu_fuel_limit, Some(2_000_000));
     }
@@ -669,7 +669,7 @@ permissions:
 "#;
         let policy = PolicyParser::parse_str(yaml_content).unwrap();
         let cpu_fuel_limit = extract_cpu_fuel_limit(&policy).unwrap();
-        
+
         // 1.5 cores = 1,500,000 fuel units
         assert_eq!(cpu_fuel_limit, Some(1_500_000));
     }
@@ -678,7 +678,7 @@ permissions:
     fn test_extract_cpu_fuel_limit_no_cpu() {
         let policy = create_test_policy(); // This doesn't have CPU limits
         let cpu_fuel_limit = extract_cpu_fuel_limit(&policy).unwrap();
-        
+
         assert_eq!(cpu_fuel_limit, None);
     }
 
@@ -686,7 +686,7 @@ permissions:
     fn test_create_wasi_state_template_with_cpu_limits() {
         let temp_dir = TempDir::new().unwrap();
         let plugin_dir = temp_dir.path();
-        
+
         let yaml_content = r#"
 version: "1.0"
 description: "Test policy with CPU limits"
@@ -697,7 +697,7 @@ permissions:
 "#;
         let policy = PolicyParser::parse_str(yaml_content).unwrap();
         let template = create_wasi_state_template_from_policy(&policy, plugin_dir).unwrap();
-        
+
         assert_eq!(template.cpu_fuel_limit, Some(1_000_000));
     }
 
