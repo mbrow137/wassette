@@ -257,45 +257,32 @@ stateDiagram-v2
 - Automatic cleanup of open connections
 - Connection pooling for performance (where safe)
 
-### Performance Optimizations
+### Current Implementation
 
-**Instance Pooling:**
-- Reuse instances for stateless tools when safe
-- Warm startup for frequently used components
-- Configurable pool sizes per component
+Wassette currently implements a straightforward component lifecycle:
+- Components are loaded once during startup or via explicit load commands
+- Each component instance runs independently without pooling
+- Components remain loaded until explicitly unloaded or the server restarts
 
-**Compilation Caching:**
-- Cache compiled WebAssembly modules
-- Share compiled code between instances
-- Ahead-of-time compilation for critical components
+## Component Management
 
-## Component Updates
-
-### Hot Reloading
-
-Components can be updated without stopping Wassette:
+Components can be managed through the CLI:
 
 ```bash
-# Update a component
-wassette component update my-tool oci://ghcr.io/myorg/my-tool:v1.1.0
+# Load a component manually
+wassette component load oci://ghcr.io/myorg/my-tool:latest
 
-# Rollback to previous version
-wassette component rollback my-tool v1.0.0
+# List loaded components  
+wassette component list
+
+# Unload a component
+wassette component unload my-tool
 ```
 
-### Version Management
-
-Wassette maintains component versions:
-- **Active version**: Currently serving requests
-- **Previous versions**: Available for rollback
-- **Update strategy**: Rolling updates or blue-green deployment
-
-### Migration Handling
-
-When updating components with interface changes:
-- **Backward compatibility**: Old interface versions continue to work
-- **Deprecation warnings**: Notify clients of upcoming changes
-- **Migration period**: Overlap between old and new versions
+When making changes to components:
+- Stop the server to update components in the plugin directory
+- Restart the server to load the updated components
+- Use explicit load/unload commands for runtime component management
 
 ## Monitoring and Observability
 
@@ -361,27 +348,28 @@ Runtime error handling:
 - **Timeout handling**: Kill and clean up long-running instances
 - **Resource exhaustion**: Graceful handling of memory/CPU limits
 
-### Recovery Mechanisms
+### Error Handling
 
-- **Automatic retry**: Retry failed instance creation
-- **Fallback versions**: Use previous component version on failure
-- **Circuit breaker**: Temporarily disable failing components
+When component instances fail:
+- **Instance termination**: Failed instances are cleaned up automatically
+- **Error reporting**: Clear error messages are returned to the MCP client
+- **Resource cleanup**: WASI resources are properly released
 
 ## Best Practices
 
 ### For Component Developers
 
-1. **Stateless design**: Make components stateless for better scalability
+1. **Stateless design**: Make components stateless for better reliability
 2. **Resource efficiency**: Minimize memory and CPU usage
-3. **Error handling**: Provide clear error messages
-4. **Health checks**: Implement health check functions
+3. **Error handling**: Provide clear error messages for tool failures
+4. **Graceful failures**: Handle errors without crashing the component
 
 ### For Operations
 
-1. **Monitoring**: Set up alerts for component failures
-2. **Resource limits**: Configure appropriate memory and CPU limits
-3. **Update strategy**: Plan component update procedures
-4. **Backup**: Keep previous versions available for rollback
+1. **Monitoring**: Monitor component execution through logs
+2. **Resource limits**: Configure appropriate policy-based resource limits
+3. **Testing**: Test components with restricted permissions before deployment
+4. **Documentation**: Document required permissions for each component
 
 ## Next Steps
 

@@ -113,13 +113,13 @@ wassette serve --sse
 - Useful for web-based clients
 - Enables real-time updates
 
-### HTTP
+### Streamable HTTP
 ```bash
-wassette serve --http
+wassette serve --streamable-http
 ```
-- RESTful API transport
+- HTTP-based transport optimized for streaming
 - Good for integration scenarios
-- Standard HTTP request/response
+- Supports bidirectional communication
 
 ## MCP Tool Discovery and Execution
 

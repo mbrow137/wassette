@@ -375,41 +375,23 @@ fn process_data(data: Vec<u8>) -> Result<Vec<u8>, String> {
 
 ## Security Testing and Validation
 
-### Automated Security Testing
+### Manual Security Testing
 
-Wassette includes security testing tools:
-
-```bash
-# Test component with restrictive policy
-wassette security test my-component.wasm --policy restrictive.yaml
-
-# Fuzz component with random inputs
-wassette security fuzz my-component.wasm --duration 60s
-
-# Audit component for security issues
-wassette security audit my-component.wasm
-```
-
-### Penetration Testing
-
-Regular security assessments should include:
+Security validation should include:
 
 - **Component isolation testing**: Verify components cannot access each other
-- **Policy bypass testing**: Attempt to circumvent permission policies
+- **Policy bypass testing**: Attempt to circumvent permission policies  
 - **Resource exhaustion testing**: Verify resource limits are enforced
 - **Interface boundary testing**: Validate type safety at WASI interfaces
 
-### Security Benchmarking
+### Security Assessment Practices
 
-Performance impact of security features:
+When evaluating component security:
 
-```bash
-# Measure security overhead
-wassette benchmark security-overhead my-component.wasm
-
-# Compare sandboxed vs native performance
-wassette benchmark compare my-component.wasm native-binary
-```
+- Test components with minimal permission policies
+- Verify permission denials are handled gracefully
+- Validate that unauthorized access attempts fail appropriately
+- Monitor component resource usage patterns
 
 ## Incident Response
 

@@ -53,7 +53,6 @@
 # Reference
 
 - [CLI Commands](./reference/cli-commands.md)
-- [Policy Schema](./reference/policy-schema.md)
 - [Component Format](./reference/component-format.md)
 - [Configuration Files](./reference/configuration-files.md)
 
