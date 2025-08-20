@@ -4,18 +4,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-### Changed
-
-- Updated documentation to clarify Wassette as a runtime rather than a platform, with improved wording for creating WebAssembly components that can be used as Tools for AI Agents with Wassette ([#TBD](https://github.com/microsoft/wassette/pull/TBD))
-- Disabled the security audit job from GitHub Actions workflow to reduce CI noise ([#TBD](https://github.com/microsoft/wassette/pull/TBD))
-
-### Fixed
-
-- Fixed broken links in README.md pointing to documentation files in wrong directory paths ([#TBD](https://github.com/microsoft/wassette/pull/TBD))
-- Add cargo audit configuration to acknowledge unmaintained `paste` dependency warning ([#169](https://github.com/microsoft/wassette/pull/169))
-
 ### Added
 
+- **Major Documentation Restructure**: Comprehensive documentation overhaul implementing end-to-end information architecture ([#206](https://github.com/microsoft/wassette/pull/206))
+  - Created comprehensive [Quickstart Guide](./docs/src/quickstart.md) with 5-minute setup for all MCP clients
+  - Added [MCP Fundamentals](./docs/src/concepts/mcp-fundamentals.md) explaining MCP servers, clients, tools, and Wassette's role
+  - Created [WebAssembly Components](./docs/src/concepts/webassembly-components.md) guide covering Component Model, WIT interfaces, and development workflow
+  - Added [Policy & Capabilities](./docs/src/concepts/policy-capabilities.md) comprehensive guide to capability-based security
+  - Enhanced [System Architecture](./docs/src/architecture/system-architecture.md) with detailed component lifecycle and policy engine documentation
+  - Created [Sandboxing Overview](./docs/src/security/sandboxing-overview.md) explaining WebAssembly security model and WASI capabilities
+  - Reorganized documentation structure with logical grouping: Overview, Concepts, Architecture, Security, Development, Client Integration, Migration, Reference, Cookbook, and FAQ
 - GitHub Actions workflow to automatically build and deploy mdBook documentation to GitHub Pages ([#196](https://github.com/microsoft/wassette/pull/196))
 - Dependabot automerge workflow for automated dependency updates when CI passes ([#TBD](https://github.com/microsoft/wassette/pull/TBD))
 - Documentation for built-in tools in README, listing all 11 available tools with descriptions for better discoverability ([#TBD](https://github.com/microsoft/wassette/pull/TBD))
@@ -42,6 +40,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed  
 
+- **Enhanced Overview Documentation**: Strengthened overview.md to explicitly position Wassette as an MCP server with clear value proposition and "how it works" workflow ([#206](https://github.com/microsoft/wassette/pull/206))
+- **Documentation Information Architecture**: Completely restructured documentation with MCP-first clarity, sandbox mental model, and interoperability focus ([#206](https://github.com/microsoft/wassette/pull/206))
 - **BREAKING CHANGE**: Upgraded rmcp dependency from v0.2 to v0.5.0 to enable native structured output support ([#181](https://github.com/microsoft/wassette/pull/181))
 - Copyright header instructions to Rust development guidelines ([#TBD](https://github.com/microsoft/wassette/pull/TBD))
 - Enhanced environment variable CLI experience with `--env` and `--env-file` options for better configuration management
@@ -67,16 +67,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Spell check, link checker, and unused dependency checker to CI workflow ([#116](https://github.com/microsoft/wassette/pull/116))
 - Kubernetes-style resource limits in policy specification with `resources.limits` section supporting CPU ("500m", "1") and memory ("512Mi", "1Gi") formats ([#166](https://github.com/microsoft/wassette/pull/166))
 
-### Changed
-- CLI now supports both server mode (`wassette serve`) and direct management mode for component operations
-- Component load/unload operations can now work independently without requiring a running MCP server
-- Enhanced help text and command structure with logical grouping of related functionality
-- **BREAKING CHANGE**: Renamed `--http` flag to `--sse` for clarity, distinguishing SSE transport from streamable HTTP transport ([#100](https://github.com/microsoft/wassette/pull/100))
-- **BREAKING CHANGE**: Component registry struct renamed for consistency ([#112](https://github.com/microsoft/wassette/pull/112))
-- Pre-instantiated components now used for faster startup time and better performance under load ([#124](https://github.com/microsoft/wassette/pull/124))
-- Refactored lib.rs into smaller, more manageable modules for better code organization ([#112](https://github.com/microsoft/wassette/pull/112))
-- Optimized examples.yml workflow triggers to only run on example changes ([#102](https://github.com/microsoft/wassette/pull/102))
-- Optimized resource limit parsing with caching using `OnceLock` to avoid repeated string parsing ([#166](https://github.com/microsoft/wassette/pull/166))
 - Removed policy configuration section from JavaScript/TypeScript WebAssembly Component authoring guide as it's not related to component authoring ([#159](https://github.com/microsoft/wassette/pull/159))
 
 ### Fixed
