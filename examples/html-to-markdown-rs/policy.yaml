@@ -1,0 +1,5 @@
+version: "1.0"
+description: "Permission policy for HTML to Markdown converter component"
+permissions:
+  # No special permissions required - this component performs pure computation
+  # It only converts HTML strings to Markdown without external dependencies

@@ -1,0 +1,43 @@
+component: html-to-markdown-rs
+metadata:
+  name: HTML to Markdown Converter
+  description: A WebAssembly component that converts HTML strings to Markdown format
+  version: 0.1.0
+  author: Microsoft Corporation
+  
+permissions:
+  required:
+    # No special permissions required - pure computation
+    []
+  
+interfaces:
+  exports:
+    - name: convert
+      type: function
+      signature: "func(html: string) -> result<string, string>"
+      description: "Convert HTML string to Markdown format"
+      
+features:
+  - HTML parsing using scraper crate
+  - Support for headers (h1-h6)
+  - Support for paragraphs and text formatting
+  - Support for links with href attributes
+  - Support for ordered and unordered lists
+  - Support for blockquotes
+  - Support for code blocks and inline code
+  - Support for emphasis and strong text
+  - Support for generic containers (div, span)
+
+examples:
+  input: |
+    <h1>Hello World</h1>
+    <p>This is a <strong>paragraph</strong> with <em>emphasis</em>.</p>
+    <ul><li>Item 1</li><li>Item 2</li></ul>
+  
+  output: |
+    # Hello World
+    
+    This is a **paragraph** with *emphasis*.
+    
+    - Item 1
+    - Item 2
