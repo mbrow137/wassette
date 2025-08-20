@@ -4,4 +4,7 @@ package component:fetch-rs;
 world fetch {
     /// Fetch data from a URL and return the response body as a String
     export fetch: func(url: string) -> result<string, string>;
+    
+    /// Search the web for a query and return formatted results
+    export web-search: func(query: string, max-results: u32, language: option<string>, region: option<string>) -> result<string, string>;
 }

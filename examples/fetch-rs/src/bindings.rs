@@ -55,6 +55,7 @@ pub unsafe fn __post_return_fetch<T: Guest>(arg0: *mut u8) {
 }
 pub trait Guest {
     fn fetch(url: _rt::String) -> Result<_rt::String, _rt::String>;
+    fn web_search(query: _rt::String, max_results: u32, language: Option<_rt::String>, region: Option<_rt::String>) -> Result<_rt::String, _rt::String>;
 }
 #[doc(hidden)]
 macro_rules! __export_world_fetch_cabi {
