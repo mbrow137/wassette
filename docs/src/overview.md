@@ -2,15 +2,32 @@
 
 ## Overview
 
-Wassette is a secure, open-source Model Context Protocol (MCP) server that leverages WebAssembly (Wasm) to provide a trusted execution environment for untrusted tools. MCP is a standard how LLMs access and share data with external tools. By embedding a WebAssembly runtime and applying fine-grained security policies, Wassette enables safe execution of third-party MCP tools without compromising the host system.
+**Wassette is an MCP server** that runs tools as WebAssembly components inside a Wasmtime sandbox. Unlike traditional MCP servers that run directly on the host with full system privileges, Wassette executes tools in a secure, isolated environment with fine-grained capability control.
+
+The [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) is an open standard that enables AI assistants to securely access external data and tools. While most MCP servers expose tools by running code directly on the host system, Wassette takes a security-first approach by running all tools as WebAssembly components with explicit permission policies.
 
 ### Key Features
 
 Wassette provides the following key features:
 
-- **Sandboxed tools** using the WebAssembly Component Model
-- **Fine-grained permissions** for file system, network, and system resources
+- **Secure MCP server**: Runs as a standard MCP server that clients can connect to using `--stdio`, SSE, or HTTP transports
+- **Sandboxed tools** using the WebAssembly Component Model with browser-grade isolation
+- **Fine-grained permissions** for file system, network, and system resources with explicit policy control
+- **Standard MCP workflows**: Tools appear as normal MCP tools to clients - no changes needed to your editor or CLI
 - **Developer-friendly approach** that simplifies tool development by focusing on business logic rather than infrastructure complexity
+
+### How It Works
+
+1. **Define tool interfaces** in WebAssembly Interface Types (WIT)
+2. **Compile to components** from languages like JavaScript, Python, Rust, or Go
+3. **Assign security policies** with explicit filesystem, network, and resource permissions
+4. **Load into Wassette** - components register as MCP tools automatically
+5. **Connect MCP clients** using standard patterns like `wassette serve --stdio`
+6. **Call tools safely** - clients discover and use tools through normal MCP workflows
+
+### Get Started
+
+Install Wassette, connect your editor with `wassette serve --stdio`, and run the [5-minute Quickstart](./quickstart.md) to load and call your first secure tool.
 
 > **Note**: The name "Wassette" is a portmanteau of "Wasm" and "Cassette" (referring to magnetic tape storage), and is pronounced "Wass-ette".
 
