@@ -1,0 +1,7 @@
+package component:html-to-markdown-rs;
+
+/// A component for converting HTML to Markdown
+world html-to-markdown {
+    /// Convert HTML string to Markdown
+    export convert: func(html: string) -> result<string, string>;
+}
