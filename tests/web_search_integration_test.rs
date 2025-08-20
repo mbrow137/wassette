@@ -39,7 +39,8 @@ async fn test_web_search_with_network_policy_enforcement() -> Result<()> {
                 "max_results": 3,
                 "language": null,
                 "region": null
-            }).to_string(),
+            })
+            .to_string(),
         )
         .await;
 
@@ -63,7 +64,9 @@ async fn test_web_search_with_network_policy_enforcement() -> Result<()> {
             let error_msg = e.to_string();
             if error_msg.contains("Unknown tool name: web-search") {
                 println!("⚠️  Expected failure: web-search function not exported by component");
-                println!("     This indicates the component needs to be fixed to export web-search");
+                println!(
+                    "     This indicates the component needs to be fixed to export web-search"
+                );
                 return Ok(()); // Test passes with known limitation
             } else {
                 panic!("Unexpected error calling web-search: {e}");
@@ -94,7 +97,8 @@ async fn test_web_search_with_network_policy_enforcement() -> Result<()> {
                 "max_results": 3,
                 "language": null,
                 "region": null
-            }).to_string(),
+            })
+            .to_string(),
         )
         .await;
 
@@ -103,11 +107,14 @@ async fn test_web_search_with_network_policy_enforcement() -> Result<()> {
             println!("Web search response after granting permission: {response}");
 
             if response.contains("HttpRequestDenied") {
-                panic!("Web search request still being blocked after granting permission: {response}");
+                panic!(
+                    "Web search request still being blocked after granting permission: {response}"
+                );
             } else {
                 // Verify the response format is markdown
                 assert!(
-                    response.contains("# Web Search Results for:") && response.contains("rust programming"),
+                    response.contains("# Web Search Results for:")
+                        && response.contains("rust programming"),
                     "Expected response to contain search results header and query, got: {response}"
                 );
                 assert!(
@@ -153,7 +160,8 @@ async fn test_web_search_with_parameters() -> Result<()> {
                 "max_results": 5,
                 "language": "en",
                 "region": "us"
-            }).to_string(),
+            })
+            .to_string(),
         )
         .await;
 
@@ -163,7 +171,8 @@ async fn test_web_search_with_parameters() -> Result<()> {
 
             // Verify the response format contains expected elements
             assert!(
-                response.contains("# Web Search Results for:") && response.contains("weather today"),
+                response.contains("# Web Search Results for:")
+                    && response.contains("weather today"),
                 "Expected response to contain search results header and query, got: {response}"
             );
             assert!(
@@ -218,7 +227,8 @@ async fn test_web_search_max_results_limiting() -> Result<()> {
                 "max_results": 1,
                 "language": null,
                 "region": null
-            }).to_string(),
+            })
+            .to_string(),
         )
         .await;
 
@@ -232,7 +242,8 @@ async fn test_web_search_max_results_limiting() -> Result<()> {
                 "Expected response to contain max results limit of 1, got: {response}"
             );
             assert!(
-                response.contains("# Web Search Results for:") && response.contains("artificial intelligence"),
+                response.contains("# Web Search Results for:")
+                    && response.contains("artificial intelligence"),
                 "Expected response to contain search results header and query, got: {response}"
             );
             println!("✅ Web search with max-results limiting succeeded!");
@@ -279,7 +290,8 @@ async fn test_web_search_with_different_host_still_denied() -> Result<()> {
                 "max_results": 3,
                 "language": null,
                 "region": null
-            }).to_string(),
+            })
+            .to_string(),
         )
         .await;
 
