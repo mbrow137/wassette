@@ -35,47 +35,63 @@ impl Guest for Component {
         })
     }
 
-    fn web_search(query: String, max_results: u32, language: Option<String>, region: Option<String>) -> Result<String, String> {
+    fn web_search(
+        query: String,
+        max_results: u32,
+        language: Option<String>,
+        region: Option<String>,
+    ) -> Result<String, String> {
         spin_executor::run(async move {
             // Use DuckDuckGo instant answer API which is simpler and returns JSON
-            let mut search_url = format!("https://api.duckduckgo.com/?q={}&format=json&no_html=1&skip_disambig=1", urlencoding::encode(&query));
-            
+            let mut search_url = format!(
+                "https://api.duckduckgo.com/?q={}&format=json&no_html=1&skip_disambig=1",
+                urlencoding::encode(&query)
+            );
+
             // Add language parameter if provided
             if let Some(lang) = language {
                 search_url.push_str(&format!("&kl={}", urlencoding::encode(&lang)));
             }
-            
+
             let request = Request::get(search_url);
             let response: Response = send(request).await.map_err(|e| e.to_string())?;
             let status = response.status();
             if !(200..300).contains(status) {
-                return Err(format!("Search request failed with status code: {}", status));
+                return Err(format!(
+                    "Search request failed with status code: {}",
+                    status
+                ));
             }
-            
+
             let body = String::from_utf8_lossy(response.body());
-            
+
             // Parse the JSON response from DuckDuckGo API
             let search_results = parse_duckduckgo_response(&body, max_results, &query, region);
-            
+
             Ok(search_results)
         })
     }
 }
 
-fn parse_duckduckgo_response(json_str: &str, max_results: u32, query: &str, region: Option<String>) -> String {
+fn parse_duckduckgo_response(
+    json_str: &str,
+    max_results: u32,
+    query: &str,
+    region: Option<String>,
+) -> String {
     let mut results = String::new();
     results.push_str(&format!("# Web Search Results for: \"{}\"\n\n", query));
     results.push_str(&format!("**Limited to {} results**\n\n", max_results));
-    
+
     if let Some(ref reg) = region {
         results.push_str(&format!("**Region:** {}\n\n", reg));
     }
-    
+
     // Parse JSON response
     match serde_json::from_str::<Value>(json_str) {
         Ok(json) => {
             let mut count = 0u32;
-            
+
             // Check for instant answer
             if let Some(answer) = json.get("Answer") {
                 if let Some(answer_str) = answer.as_str() {
@@ -87,7 +103,7 @@ fn parse_duckduckgo_response(json_str: &str, max_results: u32, query: &str, regi
                     }
                 }
             }
-            
+
             // Check for abstract
             if count < max_results {
                 if let Some(abstract_text) = json.get("Abstract") {
@@ -111,7 +127,7 @@ fn parse_duckduckgo_response(json_str: &str, max_results: u32, query: &str, regi
                     }
                 }
             }
-            
+
             // Check for related topics
             if count < max_results {
                 if let Some(topics) = json.get("RelatedTopics") {
@@ -138,11 +154,11 @@ fn parse_duckduckgo_response(json_str: &str, max_results: u32, query: &str, regi
                     }
                 }
             }
-            
+
             if count == 0 {
                 results.push_str("No search results found for this query. The search engine may not have information about this topic.\n\n");
                 results.push_str("**Suggestion:** Try rephrasing your search query or using more specific terms.\n\n");
-                
+
                 // Show raw JSON for debugging if it contains data
                 if json.as_object().map_or(false, |obj| !obj.is_empty()) {
                     results.push_str("**API Response Summary:**\n");
@@ -158,11 +174,15 @@ fn parse_duckduckgo_response(json_str: &str, max_results: u32, query: &str, regi
         Err(e) => {
             results.push_str(&format!("Error parsing search results: {}\n\n", e));
             results.push_str("**Raw response preview:**\n");
-            let preview = if json_str.len() > 300 { &json_str[..300] } else { json_str };
+            let preview = if json_str.len() > 300 {
+                &json_str[..300]
+            } else {
+                json_str
+            };
             results.push_str(&format!("```\n{}\n```\n", preview));
         }
     }
-    
+
     results
 }
 
@@ -173,8 +193,13 @@ fn html_to_markdown(html: &str) -> String {
 
     for element in fragment.select(&text_selector) {
         let tag_name = element.value().name();
-        let text = element.text().collect::<Vec<_>>().join(" ").trim().to_string();
-        
+        let text = element
+            .text()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .trim()
+            .to_string();
+
         if text.is_empty() {
             continue;
         }
@@ -193,7 +218,7 @@ fn html_to_markdown(html: &str) -> String {
                 } else {
                     markdown.push_str(&format!("{}\n\n", text));
                 }
-            },
+            }
             _ => markdown.push_str(&format!("{}\n\n", text)),
         }
     }

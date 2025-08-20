@@ -7,7 +7,8 @@
 #[doc(hidden)]
 #[allow(non_snake_case)]
 pub unsafe fn _export_fetch_cabi<T: Guest>(arg0: *mut u8, arg1: usize) -> *mut u8 {
-    #[cfg(target_arch = "wasm32")] _rt::run_ctors_once();
+    #[cfg(target_arch = "wasm32")]
+    _rt::run_ctors_once();
     let len0 = arg1;
     let bytes0 = _rt::Vec::from_raw_parts(arg0.cast(), len0, len0);
     let result1 = T::fetch(_rt::string_lift(bytes0));
@@ -19,9 +20,12 @@ pub unsafe fn _export_fetch_cabi<T: Guest>(arg0: *mut u8, arg1: usize) -> *mut u
             let ptr3 = vec3.as_ptr().cast::<u8>();
             let len3 = vec3.len();
             ::core::mem::forget(vec3);
-            *ptr2.add(2 * ::core::mem::size_of::<*const u8>()).cast::<usize>() = len3;
-            *ptr2.add(::core::mem::size_of::<*const u8>()).cast::<*mut u8>() = ptr3
-                .cast_mut();
+            *ptr2
+                .add(2 * ::core::mem::size_of::<*const u8>())
+                .cast::<usize>() = len3;
+            *ptr2
+                .add(::core::mem::size_of::<*const u8>())
+                .cast::<*mut u8>() = ptr3.cast_mut();
         }
         Err(e) => {
             *ptr2.add(0).cast::<u8>() = (1i32) as u8;
@@ -29,9 +33,12 @@ pub unsafe fn _export_fetch_cabi<T: Guest>(arg0: *mut u8, arg1: usize) -> *mut u
             let ptr4 = vec4.as_ptr().cast::<u8>();
             let len4 = vec4.len();
             ::core::mem::forget(vec4);
-            *ptr2.add(2 * ::core::mem::size_of::<*const u8>()).cast::<usize>() = len4;
-            *ptr2.add(::core::mem::size_of::<*const u8>()).cast::<*mut u8>() = ptr4
-                .cast_mut();
+            *ptr2
+                .add(2 * ::core::mem::size_of::<*const u8>())
+                .cast::<usize>() = len4;
+            *ptr2
+                .add(::core::mem::size_of::<*const u8>())
+                .cast::<*mut u8>() = ptr4.cast_mut();
         }
     };
     ptr2
@@ -42,29 +49,148 @@ pub unsafe fn __post_return_fetch<T: Guest>(arg0: *mut u8) {
     let l0 = i32::from(*arg0.add(0).cast::<u8>());
     match l0 {
         0 => {
-            let l1 = *arg0.add(::core::mem::size_of::<*const u8>()).cast::<*mut u8>();
-            let l2 = *arg0.add(2 * ::core::mem::size_of::<*const u8>()).cast::<usize>();
+            let l1 = *arg0
+                .add(::core::mem::size_of::<*const u8>())
+                .cast::<*mut u8>();
+            let l2 = *arg0
+                .add(2 * ::core::mem::size_of::<*const u8>())
+                .cast::<usize>();
             _rt::cabi_dealloc(l1, l2, 1);
         }
         _ => {
-            let l3 = *arg0.add(::core::mem::size_of::<*const u8>()).cast::<*mut u8>();
-            let l4 = *arg0.add(2 * ::core::mem::size_of::<*const u8>()).cast::<usize>();
+            let l3 = *arg0
+                .add(::core::mem::size_of::<*const u8>())
+                .cast::<*mut u8>();
+            let l4 = *arg0
+                .add(2 * ::core::mem::size_of::<*const u8>())
+                .cast::<usize>();
+            _rt::cabi_dealloc(l3, l4, 1);
+        }
+    }
+}
+#[doc(hidden)]
+#[allow(non_snake_case)]
+pub unsafe fn _export_web_search_cabi<T: Guest>(
+    arg0: *mut u8,
+    arg1: usize,
+    arg2: u32,
+    arg3: u32,
+    arg4: *mut u8,
+    arg5: usize,
+    arg6: u32,
+    arg7: *mut u8,
+    arg8: usize,
+) -> *mut u8 {
+    #[cfg(target_arch = "wasm32")]
+    _rt::run_ctors_once();
+    let len0 = arg1;
+    let bytes0 = _rt::Vec::from_raw_parts(arg0.cast(), len0, len0);
+    let len1 = arg5;
+    let bytes1 = _rt::Vec::from_raw_parts(arg4.cast(), len1, len1);
+    let len2 = arg8;
+    let bytes2 = _rt::Vec::from_raw_parts(arg7.cast(), len2, len2);
+    let result3 = T::web_search(
+        _rt::string_lift(bytes0),
+        arg2,
+        match arg3 {
+            0 => None,
+            1 => Some(_rt::string_lift(bytes1)),
+            _ => _rt::invalid_enum_discriminant(),
+        },
+        match arg6 {
+            0 => None,
+            1 => Some(_rt::string_lift(bytes2)),
+            _ => _rt::invalid_enum_discriminant(),
+        },
+    );
+    let ptr4 = (&raw mut _RET_AREA.0).cast::<u8>();
+    match result3 {
+        Ok(e) => {
+            *ptr4.add(0).cast::<u8>() = (0i32) as u8;
+            let vec5 = (e.into_bytes()).into_boxed_slice();
+            let ptr5 = vec5.as_ptr().cast::<u8>();
+            let len5 = vec5.len();
+            ::core::mem::forget(vec5);
+            *ptr4
+                .add(2 * ::core::mem::size_of::<*const u8>())
+                .cast::<usize>() = len5;
+            *ptr4
+                .add(::core::mem::size_of::<*const u8>())
+                .cast::<*mut u8>() = ptr5.cast_mut();
+        }
+        Err(e) => {
+            *ptr4.add(0).cast::<u8>() = (1i32) as u8;
+            let vec6 = (e.into_bytes()).into_boxed_slice();
+            let ptr6 = vec6.as_ptr().cast::<u8>();
+            let len6 = vec6.len();
+            ::core::mem::forget(vec6);
+            *ptr4
+                .add(2 * ::core::mem::size_of::<*const u8>())
+                .cast::<usize>() = len6;
+            *ptr4
+                .add(::core::mem::size_of::<*const u8>())
+                .cast::<*mut u8>() = ptr6.cast_mut();
+        }
+    };
+    ptr4
+}
+#[doc(hidden)]
+#[allow(non_snake_case)]
+pub unsafe fn __post_return_web_search<T: Guest>(arg0: *mut u8) {
+    let l0 = i32::from(*arg0.add(0).cast::<u8>());
+    match l0 {
+        0 => {
+            let l1 = *arg0
+                .add(::core::mem::size_of::<*const u8>())
+                .cast::<*mut u8>();
+            let l2 = *arg0
+                .add(2 * ::core::mem::size_of::<*const u8>())
+                .cast::<usize>();
+            _rt::cabi_dealloc(l1, l2, 1);
+        }
+        _ => {
+            let l3 = *arg0
+                .add(::core::mem::size_of::<*const u8>())
+                .cast::<*mut u8>();
+            let l4 = *arg0
+                .add(2 * ::core::mem::size_of::<*const u8>())
+                .cast::<usize>();
             _rt::cabi_dealloc(l3, l4, 1);
         }
     }
 }
 pub trait Guest {
     fn fetch(url: _rt::String) -> Result<_rt::String, _rt::String>;
-    fn web_search(query: _rt::String, max_results: u32, language: Option<_rt::String>, region: Option<_rt::String>) -> Result<_rt::String, _rt::String>;
+    fn web_search(
+        query: _rt::String,
+        max_results: u32,
+        language: Option<_rt::String>,
+        region: Option<_rt::String>,
+    ) -> Result<_rt::String, _rt::String>;
 }
 #[doc(hidden)]
 macro_rules! __export_world_fetch_cabi {
     ($ty:ident with_types_in $($path_to_types:tt)*) => {
-        const _ : () = { #[unsafe (export_name = "fetch")] unsafe extern "C" fn
-        export_fetch(arg0 : * mut u8, arg1 : usize,) -> * mut u8 { unsafe {
-        $($path_to_types)*:: _export_fetch_cabi::<$ty > (arg0, arg1) } } #[unsafe
-        (export_name = "cabi_post_fetch")] unsafe extern "C" fn _post_return_fetch(arg0 :
-        * mut u8,) { unsafe { $($path_to_types)*:: __post_return_fetch::<$ty > (arg0) } }
+        const _ : () = {
+            #[unsafe (export_name = "fetch")]
+            unsafe extern "C" fn export_fetch(arg0 : * mut u8, arg1 : usize,) -> * mut u8 {
+                unsafe { $($path_to_types)*:: _export_fetch_cabi::<$ty > (arg0, arg1) }
+            }
+            #[unsafe (export_name = "cabi_post_fetch")]
+            unsafe extern "C" fn _post_return_fetch(arg0 : * mut u8,) {
+                unsafe { $($path_to_types)*:: __post_return_fetch::<$ty > (arg0) }
+            }
+            #[unsafe (export_name = "web-search")]
+            unsafe extern "C" fn export_web_search(
+                arg0: *mut u8, arg1: usize, arg2: u32, arg3: u32,
+                arg4: *mut u8, arg5: usize, arg6: u32, arg7: *mut u8, arg8: usize
+            ) -> *mut u8 {
+                unsafe { $($path_to_types)*:: _export_web_search_cabi::<$ty > (arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) }
+            }
+            #[unsafe (export_name = "cabi_post_web-search")]
+            unsafe extern "C" fn _post_return_web_search(arg0 : * mut u8,) {
+                unsafe { $($path_to_types)*:: __post_return_web_search::<$ty > (arg0) }
+            }
         };
     };
 }
@@ -73,9 +199,8 @@ pub(crate) use __export_world_fetch_cabi;
 #[cfg_attr(target_pointer_width = "64", repr(align(8)))]
 #[cfg_attr(target_pointer_width = "32", repr(align(4)))]
 struct _RetArea([::core::mem::MaybeUninit<u8>; 3 * ::core::mem::size_of::<*const u8>()]);
-static mut _RET_AREA: _RetArea = _RetArea(
-    [::core::mem::MaybeUninit::uninit(); 3 * ::core::mem::size_of::<*const u8>()],
-);
+static mut _RET_AREA: _RetArea =
+    _RetArea([::core::mem::MaybeUninit::uninit(); 3 * ::core::mem::size_of::<*const u8>()]);
 #[rustfmt::skip]
 mod _rt {
     #![allow(dead_code, clippy::all)]
@@ -97,6 +222,9 @@ mod _rt {
         }
         let layout = alloc::Layout::from_size_align_unchecked(size, align);
         alloc::dealloc(ptr, layout);
+    }
+    pub fn invalid_enum_discriminant() -> ! {
+        panic!("invalid enum discriminant")
     }
     pub use alloc_crate::string::String;
     extern crate alloc as alloc_crate;
@@ -132,9 +260,7 @@ macro_rules! __export_fetch_impl {
 #[doc(inline)]
 pub(crate) use __export_fetch_impl as export;
 #[cfg(target_arch = "wasm32")]
-#[unsafe(
-    link_section = "component-type:wit-bindgen:0.41.0:component:fetch-rs:fetch:encoded world"
-)]
+#[unsafe(link_section = "component-type:wit-bindgen:0.41.0:component:fetch-rs:fetch:encoded world")]
 #[doc(hidden)]
 #[allow(clippy::octal_escapes)]
 pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 184] = *b"\
