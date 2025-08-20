@@ -4,22 +4,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-### Changed
-
-- Updated documentation to clarify Wassette as a runtime rather than a platform, with improved wording for creating WebAssembly components that can be used as Tools for AI Agents with Wassette ([#TBD](https://github.com/microsoft/wassette/pull/TBD))
-- Disabled the security audit job from GitHub Actions workflow to reduce CI noise ([#TBD](https://github.com/microsoft/wassette/pull/TBD))
-
-### Fixed
-
-- Fixed dependabot auto-merge workflow failing with "workflows permission" error by adding `workflows: write` permission ([#TBD](https://github.com/microsoft/wassette/pull/TBD))
-- Fixed inconsistent spelling of "wasette" to "wassette" in configuration paths and documentation comments ([#TBD](https://github.com/microsoft/wassette/pull/TBD))
-- Fixed broken links in README.md pointing to documentation files in wrong directory paths ([#TBD](https://github.com/microsoft/wassette/pull/TBD))
-- Add cargo audit configuration to acknowledge unmaintained `paste` dependency warning ([#169](https://github.com/microsoft/wassette/pull/169))
-
 ### Added
 
-- GitHub Actions workflow to automatically build and deploy mdBook documentation to GitHub Pages ([#196](https://github.com/microsoft/wassette/pull/196))
-- Dependabot automerge workflow for automated dependency updates when CI passes ([#TBD](https://github.com/microsoft/wassette/pull/TBD))
+- **Fast Startup + Lazy and Cached Loading**: Major performance enhancement for component loading ([#204](https://github.com/microsoft/wassette/pull/204))
 - Documentation for built-in tools in README, listing all 11 available tools with descriptions for better discoverability ([#TBD](https://github.com/microsoft/wassette/pull/TBD))
 - Dependabot automerge workflow for automated dependency updates when CI passes
 - **Major CLI UX Enhancement**: Expanded Wassette from a simple server launcher to a comprehensive CLI tool for managing WebAssembly components and permissions directly from the command line
@@ -45,6 +32,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed  
 
 - **BREAKING CHANGE**: Upgraded rmcp dependency from v0.2 to v0.5.0 to enable native structured output support ([#181](https://github.com/microsoft/wassette/pull/181))
+- Updated documentation to clarify Wassette as a runtime rather than a platform, with improved wording for creating WebAssembly components that can be used as Tools for AI Agents with Wassette ([#TBD](https://github.com/microsoft/wassette/pull/TBD))
 - Copyright header instructions to Rust development guidelines ([#TBD](https://github.com/microsoft/wassette/pull/TBD))
 - Enhanced environment variable CLI experience with `--env` and `--env-file` options for better configuration management
 - Comprehensive Go development guide for authoring Wasm components ([#163](https://github.com/microsoft/wassette/pull/163))
@@ -55,6 +43,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- Add cargo audit configuration to acknowledge unmaintained `paste` dependency warning ([#169](https://github.com/microsoft/wassette/pull/169))
 - Fixed permission parsing to support "environment-variable" permission type alias for environment permissions
 - Fixed storage permission revocation to work with URI-only specification (removes all access types for the given URI)
 - Revoke commands and reset permission functionality with simplified storage revocation ([#87](https://github.com/microsoft/wassette/pull/87))

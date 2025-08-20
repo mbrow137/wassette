@@ -25,6 +25,9 @@ use wasmtime::component::{Component, InstancePre, Linker};
 use wasmtime::{Engine, Store};
 use wasmtime_wasi_config::WasiConfig;
 
+/// Type alias for notification callback function
+pub type NotificationCallback = Arc<dyn Fn(&str, &str) + Send + Sync>;
+
 mod http;
 mod loader;
 mod policy_internal;
@@ -143,6 +146,7 @@ pub struct LifecycleManager {
     http_client: reqwest::Client,
     plugin_dir: PathBuf,
     environment_vars: HashMap<String, String>,
+    notification_callback: Option<NotificationCallback>,
 }
 
 /// A representation of a loaded component instance. It contains both the base component info and a
@@ -415,6 +419,7 @@ impl LifecycleManager {
             http_client,
             plugin_dir: plugin_dir.as_ref().to_path_buf(),
             environment_vars,
+            notification_callback: None,
         })
     }
 
@@ -465,7 +470,20 @@ impl LifecycleManager {
             http_client,
             plugin_dir: plugin_dir.as_ref().to_path_buf(),
             environment_vars,
+            notification_callback: None,
         })
+    }
+
+    /// Set a notification callback for tool list changes
+    pub fn set_notification_callback(&mut self, callback: NotificationCallback) {
+        self.notification_callback = Some(callback);
+    }
+
+    /// Notify about tool list changes if a callback is set
+    fn notify_tool_list_changed(&self, component_id: &str, operation: &str) {
+        if let Some(callback) = &self.notification_callback {
+            callback(component_id, operation);
+        }
     }
 
     /// Load existing components in the background with bounded parallelism
@@ -531,7 +549,8 @@ impl LifecycleManager {
                         loaded_count += 1;
                         info!(component_id = %name, "Background loaded component");
                         
-                        // TODO: Send tool list change notification if we have a way to notify clients
+                        // Notify about tool list change
+                        self.notify_tool_list_changed(&name, "background_load");
                     },
                     Ok(None) => {
                         // Not a component file, skip silently
@@ -548,6 +567,24 @@ impl LifecycleManager {
         
         info!(loaded_count, "Background component loading completed");
         Ok(())
+    }
+
+    /// Scan for available components in the plugin directory without loading them
+    #[instrument(skip(self))]
+    pub async fn scan_available_components(&self) -> Result<Vec<String>> {
+        let mut available_components = Vec::new();
+        let mut entries = tokio::fs::read_dir(&self.plugin_dir).await?;
+        
+        while let Some(entry) = entries.next_entry().await? {
+            let path = entry.path();
+            if path.is_file() && path.extension().map(|ext| ext == "wasm").unwrap_or(false) {
+                if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                    available_components.push(stem.to_string());
+                }
+            }
+        }
+        
+        Ok(available_components)
     }
 
     /// Helper method to load a component's policy file
@@ -727,6 +764,120 @@ impl LifecycleManager {
         self.components.read().await.get(component_id).cloned()
     }
 
+    /// Gets a component, loading it on-demand if it exists but isn't loaded yet
+    #[instrument(skip(self))]
+    pub async fn get_or_load_component(&self, component_id: &str) -> Result<Option<ComponentInstance>> {
+        // First check if already loaded
+        if let Some(component) = self.get_component(component_id).await {
+            return Ok(Some(component));
+        }
+
+        // Check if component file exists in plugin directory
+        let component_path = self.component_path(component_id);
+        if !component_path.exists() {
+            return Ok(None);
+        }
+
+        info!(component_id, "Loading component on-demand");
+
+        // Load the component on-demand
+        match self.load_component_from_path(&component_path, component_id).await {
+            Ok(component_instance) => {
+                // Register the component and its tools
+                let tool_metadata = component_exports_to_tools(&component_instance.component, &self.engine, true);
+                
+                // Update registry
+                {
+                    let mut registry = self.registry.write().await;
+                    registry.register_tools(component_id, tool_metadata)
+                        .context("Failed to register tools for on-demand loaded component")?;
+                }
+                
+                // Store component
+                {
+                    let mut components = self.components.write().await;
+                    components.insert(component_id.to_string(), component_instance.clone());
+                }
+                
+                // Check for co-located policy file
+                let policy_path = self.plugin_dir.join(format!("{component_id}.policy.yaml"));
+                if policy_path.exists() {
+                    if let Err(e) = self.load_component_policy(component_id, &policy_path).await {
+                        warn!(component_id, error = %e, "Failed to load policy for on-demand loaded component");
+                    }
+                }
+                
+                info!(component_id, "Successfully loaded component on-demand");
+                
+                // Notify about tool list change
+                self.notify_tool_list_changed(component_id, "on_demand_load");
+                
+                Ok(Some(component_instance))
+            }
+            Err(e) => {
+                warn!(component_id, error = %e, "Failed to load component on-demand");
+                Err(e)
+            }
+        }
+    }
+
+    /// Load a component from a specific file path
+    async fn load_component_from_path(
+        &self,
+        component_path: &Path,
+        component_id: &str,
+    ) -> Result<ComponentInstance> {
+        let start_time = Instant::now();
+        
+        // Try to load from cached .cwasm file first
+        let cwasm_path = component_path.with_extension("cwasm");
+        let component = if cwasm_path.exists() {
+            // Check if the cached version is newer than the source
+            let wasm_modified = tokio::fs::metadata(component_path).await?.modified()?;
+            let cwasm_modified = tokio::fs::metadata(&cwasm_path).await?.modified()?;
+            
+            if cwasm_modified >= wasm_modified {
+                // Try to deserialize from cache
+                let engine_clone = self.engine.clone();
+                let cwasm_path_clone = cwasm_path.clone();
+                match tokio::task::spawn_blocking(move || {
+                    // SAFETY: We trust the cached .cwasm file was generated by the same engine version
+                    unsafe { Component::deserialize_file(&engine_clone, cwasm_path_clone) }
+                }).await? {
+                    Ok(component) => {
+                        debug!(component_id, "Loaded component from cache for on-demand loading");
+                        component
+                    },
+                    Err(_) => {
+                        // Cache is corrupted or incompatible, fall back to compilation
+                        warn!(component_id, "Failed to load from cache for on-demand loading, recompiling");
+                        compile_and_cache_component(&self.engine, component_path, &cwasm_path).await?
+                    }
+                }
+            } else {
+                // Source is newer, recompile
+                debug!(component_id, "Source is newer than cache for on-demand loading, recompiling");
+                compile_and_cache_component(&self.engine, component_path, &cwasm_path).await?
+            }
+        } else {
+            // No cache, compile and cache
+            debug!(component_id, "No cache found for on-demand loading, compiling and caching");
+            compile_and_cache_component(&self.engine, component_path, &cwasm_path).await?
+        };
+        
+        info!(component_id = %component_id, elapsed = ?start_time.elapsed(), "component loaded on-demand");
+        
+        let instance_pre = self
+            .linker
+            .instantiate_pre(&component)
+            .context("failed to instantiate component for on-demand loading")?;
+            
+        Ok(ComponentInstance {
+            component: Arc::new(component),
+            instance_pre: Arc::new(instance_pre),
+        })
+    }
+
     /// Lists all loaded components by their IDs
     #[instrument(skip(self))]
     pub async fn list_components(&self) -> Vec<String> {
@@ -775,8 +926,8 @@ impl LifecycleManager {
         parameters: &str,
     ) -> Result<String> {
         let component = self
-            .get_component(component_id)
-            .await
+            .get_or_load_component(component_id)
+            .await?
             .ok_or_else(|| anyhow!("Component not found: {}", component_id))?;
 
         let state = self.get_wasi_state_for_component(component_id).await?;
