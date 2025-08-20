@@ -38,13 +38,11 @@ wassette component load oci://docker.io/myorg/my-tool:latest
 wassette component load oci://registry.company.com/tools/my-tool:v2.1.0
 ```
 
-### HTTP/HTTPS URLs
+### Local File Paths
+Components must be loaded from local file paths:
 ```bash
-# Direct download
-wassette component load https://releases.example.com/my-tool.wasm
-
-# With authentication
-wassette component load https://private.example.com/my-tool.wasm --auth-token $TOKEN
+# Load from local file system
+wassette component load /path/to/my-tool.wasm
 ```
 
 ## Loading Phase
@@ -312,24 +310,12 @@ FunctionCalled {
 }
 ```
 
-### Metrics
+### Error Tracking
 
-Key metrics tracked:
-- **Load time**: Time to load and register components
-- **Instance creation time**: Time to create new instances
-- **Function execution time**: Time per tool call
-- **Memory usage**: Per-instance and total memory consumption
-- **Error rates**: Component load failures, execution errors
-
-### Health Checks
-
-Components can implement health check functions:
-
-```wit
-export health-check: func() -> result<string, string>;
-```
-
-Wassette can periodically call these to verify component health.
+Basic error information is logged through the standard Rust logging infrastructure:
+- Component load failures
+- Execution errors
+- Policy violations
 
 ## Error Handling and Recovery
 

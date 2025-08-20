@@ -48,7 +48,6 @@
 
 - [From TypeScript SDK](./migration/typescript-sdk.md)
 - [From Python SDK](./migration/python-sdk.md)
-- [From .NET SDK](./migration/dotnet-sdk.md)
 
 # Reference
 

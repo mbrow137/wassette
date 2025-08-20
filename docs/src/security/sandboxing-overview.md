@@ -242,7 +242,7 @@ enum SecurityResult {
 
 ### Real-time Monitoring
 
-Key security metrics tracked in real-time:
+Security events are logged through the standard Rust logging infrastructure:
 
 - **Permission denial rates** by component and resource type
 - **Unusual access patterns** that may indicate compromise
