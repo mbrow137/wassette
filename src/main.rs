@@ -5,6 +5,7 @@
 
 #![warn(missing_docs)]
 
+use std::collections::HashMap;
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -38,7 +39,7 @@ mod format;
 
 use commands::{
     Cli, Commands, ComponentCommands, GrantPermissionCommands, PermissionCommands, PolicyCommands,
-    RevokePermissionCommands, Serve,
+    RevokePermissionCommands, SecretCommands, Serve,
 };
 use format::{print_result, OutputFormat};
 
@@ -180,7 +181,10 @@ async fn handle_tool_cli_command(
 /// Create LifecycleManager from plugin directory
 async fn create_lifecycle_manager(plugin_dir: Option<PathBuf>) -> Result<LifecycleManager> {
     let config = if let Some(dir) = plugin_dir {
-        config::Config { plugin_dir: dir }
+        config::Config { 
+            plugin_dir: dir,
+            secrets_dir: config::get_secrets_dir().unwrap_or_else(|_| PathBuf::from("./secrets")),
+        }
     } else {
         config::Config::new(&crate::Serve {
             plugin_dir: None,
@@ -191,7 +195,15 @@ async fn create_lifecycle_manager(plugin_dir: Option<PathBuf>) -> Result<Lifecyc
         .context("Failed to load configuration")?
     };
 
-    LifecycleManager::new(&config.plugin_dir).await
+    LifecycleManager::new_with_secrets_dir(&config.plugin_dir, &config.secrets_dir).await
+}
+
+/// Create config with optional plugin and secrets directories
+fn create_config_with_dirs(plugin_dir: Option<PathBuf>, secrets_dir: Option<PathBuf>) -> Result<config::Config> {
+    Ok(config::Config {
+        plugin_dir: plugin_dir.unwrap_or_else(|| config::get_component_dir().unwrap_or_else(|_| PathBuf::from("./components"))),
+        secrets_dir: secrets_dir.unwrap_or_else(|| config::get_secrets_dir().unwrap_or_else(|_| PathBuf::from("./secrets"))),
+    })
 }
 
 impl McpServer {
@@ -643,6 +655,97 @@ async fn main() -> Result<()> {
                         OutputFormat::Json,
                     )
                     .await?;
+                }
+            },
+            Commands::Secret { command } => match command {
+                SecretCommands::List {
+                    component_id,
+                    show_values,
+                    yes,
+                    plugin_dir,
+                    secrets_dir,
+                } => {
+                    let config = create_config_with_dirs(plugin_dir.clone(), secrets_dir.clone())?;
+                    let lifecycle_manager = LifecycleManager::new_with_secrets_dir(&config.plugin_dir, &config.secrets_dir).await?;
+                    
+                    let secrets = lifecycle_manager.get_component_secrets(component_id).await
+                        .context("Failed to get component secrets")?;
+
+                    if secrets.is_empty() {
+                        println!("No secrets found for component: {}", component_id);
+                        return Ok(());
+                    }
+
+                    if *show_values {
+                        let should_show = *yes || {
+                            print!("Are you sure you want to show secret values? (y/N): ");
+                            std::io::Write::flush(&mut std::io::stdout())?;
+                            let mut input = String::new();
+                            std::io::stdin().read_line(&mut input)?;
+                            input.trim().to_lowercase() == "y"
+                        };
+
+                        if should_show {
+                            println!("Secrets for component '{}':", component_id);
+                            for (key, value) in secrets.iter() {
+                                println!("  {}={}", key, value);
+                            }
+                        } else {
+                            println!("Operation cancelled.");
+                        }
+                    } else {
+                        println!("Secret keys for component '{}':", component_id);
+                        for key in secrets.keys() {
+                            println!("  {}", key);
+                        }
+                    }
+                }
+                SecretCommands::Set {
+                    component_id,
+                    key_values,
+                    plugin_dir,
+                    secrets_dir,
+                } => {
+                    let config = create_config_with_dirs(plugin_dir.clone(), secrets_dir.clone())?;
+                    let lifecycle_manager = LifecycleManager::new_with_secrets_dir(&config.plugin_dir, &config.secrets_dir).await?;
+                    
+                    let mut updates = HashMap::new();
+                    for kv in key_values {
+                        if let Some((key, value)) = kv.split_once('=') {
+                            updates.insert(key.to_string(), value.to_string());
+                        } else {
+                            return Err(anyhow::anyhow!("Invalid key=value format: {}", kv));
+                        }
+                    }
+
+                    lifecycle_manager.update_component_secrets(component_id, updates.clone()).await
+                        .context("Failed to set component secrets")?;
+
+                    println!("Successfully set {} secret(s) for component '{}':", updates.len(), component_id);
+                    for key in updates.keys() {
+                        println!("  {}", key);
+                    }
+                }
+                SecretCommands::Delete {
+                    component_id,
+                    keys,
+                    plugin_dir,
+                    secrets_dir,
+                } => {
+                    let config = create_config_with_dirs(plugin_dir.clone(), secrets_dir.clone())?;
+                    let lifecycle_manager = LifecycleManager::new_with_secrets_dir(&config.plugin_dir, &config.secrets_dir).await?;
+                    
+                    let deleted_keys = lifecycle_manager.delete_component_secret_keys(component_id, keys).await
+                        .context("Failed to delete component secrets")?;
+
+                    if deleted_keys.is_empty() {
+                        println!("No matching secrets found to delete for component: {}", component_id);
+                    } else {
+                        println!("Successfully deleted {} secret(s) for component '{}':", deleted_keys.len(), component_id);
+                        for key in deleted_keys {
+                            println!("  {}", key);
+                        }
+                    }
                 }
             },
         },

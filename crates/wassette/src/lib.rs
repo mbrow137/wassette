@@ -28,12 +28,14 @@ use wasmtime_wasi_config::WasiConfig;
 mod http;
 mod loader;
 mod policy_internal;
+mod secrets;
 mod wasistate;
 
 pub use http::WassetteWasiState;
 use loader::{ComponentResource, PolicyResource};
 use policy_internal::PolicyRegistry;
 pub use policy_internal::{PermissionGrantRequest, PermissionRule, PolicyInfo};
+pub use secrets::{SecretManager, SecretMap};
 use wasistate::WasiState;
 pub use wasistate::{create_wasi_state_template_from_policy, WasiStateTemplate};
 
@@ -128,6 +130,7 @@ pub struct LifecycleManager {
     components: Arc<RwLock<HashMap<String, ComponentInstance>>>,
     registry: Arc<RwLock<ComponentRegistry>>,
     policy_registry: Arc<RwLock<PolicyRegistry>>,
+    secret_manager: Arc<SecretManager>,
     oci_client: Arc<oci_wasm::WasmClient>,
     http_client: reqwest::Client,
     plugin_dir: PathBuf,
@@ -146,10 +149,29 @@ impl LifecycleManager {
     /// This is the primary way to create a LifecycleManager for most use cases
     #[instrument(skip_all, fields(plugin_dir = %plugin_dir.as_ref().display()))]
     pub async fn new(plugin_dir: impl AsRef<Path>) -> Result<Self> {
-        Self::new_with_clients(
+        let secret_manager = Arc::new(SecretManager::with_default_dir()
+            .context("Failed to create secret manager with default directory")?);
+        Self::new_with_clients_and_secrets(
             plugin_dir,
             oci_client::Client::default(),
             reqwest::Client::default(),
+            secret_manager,
+        )
+        .await
+    }
+
+    /// Creates a lifecycle manager with custom secrets directory
+    #[instrument(skip_all, fields(plugin_dir = %plugin_dir.as_ref().display(), secrets_dir = %secrets_dir.as_ref().display()))]
+    pub async fn new_with_secrets_dir(
+        plugin_dir: impl AsRef<Path>,
+        secrets_dir: impl AsRef<Path>,
+    ) -> Result<Self> {
+        let secret_manager = Arc::new(SecretManager::new(secrets_dir.as_ref()));
+        Self::new_with_clients_and_secrets(
+            plugin_dir,
+            oci_client::Client::default(),
+            reqwest::Client::default(),
+            secret_manager,
         )
         .await
     }
@@ -160,6 +182,20 @@ impl LifecycleManager {
         plugin_dir: impl AsRef<Path>,
         oci_client: oci_client::Client,
         http_client: reqwest::Client,
+    ) -> Result<Self> {
+        let secret_manager = Arc::new(SecretManager::with_default_dir()
+            .context("Failed to create secret manager with default directory")?);
+        Self::new_with_clients_and_secrets(plugin_dir, oci_client, http_client, secret_manager)
+            .await
+    }
+
+    /// Creates a lifecycle manager from configuration parameters with custom clients and secret manager
+    #[instrument(skip_all)]
+    pub async fn new_with_clients_and_secrets(
+        plugin_dir: impl AsRef<Path>,
+        oci_client: oci_client::Client,
+        http_client: reqwest::Client,
+        secret_manager: Arc<SecretManager>,
     ) -> Result<Self> {
         let components_dir = plugin_dir.as_ref();
 
@@ -173,7 +209,7 @@ impl LifecycleManager {
         let engine = Arc::new(wasmtime::Engine::new(&config)?);
 
         // Create the lifecycle manager
-        Self::new_with_policy(engine, components_dir, oci_client, http_client).await
+        Self::new_with_policy(engine, components_dir, oci_client, http_client, secret_manager).await
     }
 
     /// Creates a lifecycle manager with custom clients and WASI state template
@@ -183,6 +219,7 @@ impl LifecycleManager {
         plugin_dir: impl AsRef<Path>,
         oci_client: oci_client::Client,
         http_client: reqwest::Client,
+        secret_manager: Arc<SecretManager>,
     ) -> Result<Self> {
         info!("Creating new LifecycleManager");
 
@@ -261,6 +298,7 @@ impl LifecycleManager {
             components: Arc::new(RwLock::new(components)),
             registry: Arc::new(RwLock::new(registry)),
             policy_registry: Arc::new(RwLock::new(policy_registry)),
+            secret_manager,
             oci_client: Arc::new(oci_wasm::WasmClient::new(oci_client)),
             http_client,
             plugin_dir: plugin_dir.as_ref().to_path_buf(),
@@ -458,8 +496,36 @@ impl LifecycleManager {
             .cloned()
             .unwrap_or_else(Self::create_default_policy_template);
 
-        let wasi_state = policy_template.build()?;
-        let allowed_hosts = policy_template.allowed_hosts.clone();
+        // Clone the template so we can modify it
+        let mut template = (*policy_template).clone();
+
+        // Inject secrets as environment variables
+        let secrets = self.secret_manager.get_secrets(component_id).await
+            .unwrap_or_else(|e| {
+                warn!("Failed to load secrets for component {}: {}", component_id, e);
+                SecretMap::new()
+            });
+
+        // Merge secrets into config_vars with proper precedence:
+        // 1. Explicit env passed by policy (highest priority)
+        // 2. Secrets file (medium priority) 
+        // 3. Inherited process env (lowest priority - already handled by extract_env_vars)
+        let secret_env_vars = secrets.into_env_vars();
+        for (key, value) in secret_env_vars {
+            // Only add secret if not already explicitly set in policy
+            if !template.config_vars.contains_key(&key) {
+                // Warn if trying to override critical system variables
+                if is_critical_system_var(&key) {
+                    warn!("Attempting to override critical system variable '{}' from secrets, skipping", key);
+                    continue;
+                }
+                
+                template.config_vars.insert(key, value);
+            }
+        }
+
+        let wasi_state = template.build()?;
+        let allowed_hosts = template.allowed_hosts.clone();
 
         WassetteWasiState::new(wasi_state, allowed_hosts)
     }
@@ -633,6 +699,69 @@ impl LifecycleManager {
             }
         }
         Ok(())
+    }
+
+    // Secret management methods
+
+    /// Get the secret manager for this lifecycle manager
+    pub fn secret_manager(&self) -> &SecretManager {
+        &self.secret_manager
+    }
+
+    /// Get secrets for a component (with caching)
+    #[instrument(skip(self))]
+    pub async fn get_component_secrets(&self, component_id: &str) -> Result<SecretMap> {
+        self.secret_manager.get_secrets(component_id).await
+    }
+
+    /// Set secrets for a component (merge with existing)
+    #[instrument(skip(self, secrets))]
+    pub async fn set_component_secrets(&self, component_id: &str, secrets: SecretMap) -> Result<()> {
+        // Verify component exists
+        if !self.components.read().await.contains_key(component_id) {
+            return Err(anyhow!("Component not found: {}", component_id));
+        }
+
+        self.secret_manager.set_secrets(component_id, secrets).await
+    }
+
+    /// Update specific secrets for a component
+    #[instrument(skip(self, updates))]
+    pub async fn update_component_secrets(&self, component_id: &str, updates: HashMap<String, String>) -> Result<()> {
+        // Verify component exists
+        if !self.components.read().await.contains_key(component_id) {
+            return Err(anyhow!("Component not found: {}", component_id));
+        }
+
+        self.secret_manager.update_secrets(component_id, updates).await
+    }
+
+    /// Delete specific secret keys for a component
+    #[instrument(skip(self))]
+    pub async fn delete_component_secret_keys(&self, component_id: &str, keys: &[String]) -> Result<Vec<String>> {
+        // Verify component exists
+        if !self.components.read().await.contains_key(component_id) {
+            return Err(anyhow!("Component not found: {}", component_id));
+        }
+
+        self.secret_manager.delete_secret_keys(component_id, keys).await
+    }
+
+    /// Delete all secrets for a component
+    #[instrument(skip(self))]
+    pub async fn delete_component_secrets(&self, component_id: &str) -> Result<()> {
+        // Verify component exists
+        if !self.components.read().await.contains_key(component_id) {
+            return Err(anyhow!("Component not found: {}", component_id));
+        }
+
+        self.secret_manager.delete_secrets_file(component_id).await
+    }
+
+    /// List all components that have secrets
+    #[instrument(skip(self))]
+    pub async fn list_components_with_secrets(&self) -> Result<Vec<String>> {
+        self.secret_manager.list_components_with_secrets().await
     }
 }
 
@@ -1214,4 +1343,13 @@ permissions:
 
         Ok(())
     }
+}
+
+/// Check if a variable name is a critical system variable that should not be overridden
+fn is_critical_system_var(var_name: &str) -> bool {
+    matches!(var_name, 
+        "PATH" | "HOME" | "USER" | "SHELL" | "PWD" | "TERM" | 
+        "LD_LIBRARY_PATH" | "DYLD_LIBRARY_PATH" | "SYSTEMROOT" | 
+        "WINDIR" | "PROGRAMFILES" | "PROGRAMDATA" | "USERPROFILE"
+    )
 }

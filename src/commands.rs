@@ -44,6 +44,11 @@ pub enum Commands {
         #[command(subcommand)]
         command: PermissionCommands,
     },
+    /// Manage component secrets.
+    Secret {
+        #[command(subcommand)]
+        command: SecretCommands,
+    },
 }
 
 #[derive(Parser, Debug, Clone, Serialize, Deserialize)]
@@ -205,5 +210,54 @@ pub enum RevokePermissionCommands {
         /// Directory where plugins are stored. Defaults to $XDG_DATA_HOME/wassette/components
         #[arg(long)]
         plugin_dir: Option<PathBuf>,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum SecretCommands {
+    /// List secrets for a component.
+    List {
+        /// Component ID to list secrets for
+        component_id: String,
+        /// Show secret values (will prompt for confirmation)
+        #[arg(long)]
+        show_values: bool,
+        /// Skip confirmation prompt when showing values
+        #[arg(long)]
+        yes: bool,
+        /// Directory where plugins are stored. Defaults to $XDG_DATA_HOME/wassette/components
+        #[arg(long)]
+        plugin_dir: Option<PathBuf>,
+        /// Directory where secrets are stored. Defaults to $XDG_CONFIG_HOME/wassette/secrets
+        #[arg(long)]
+        secrets_dir: Option<PathBuf>,
+    },
+    /// Set secrets for a component.
+    Set {
+        /// Component ID to set secrets for
+        component_id: String,
+        /// Key-value pairs in the format KEY=VALUE
+        #[arg(required = true)]
+        key_values: Vec<String>,
+        /// Directory where plugins are stored. Defaults to $XDG_DATA_HOME/wassette/components
+        #[arg(long)]
+        plugin_dir: Option<PathBuf>,
+        /// Directory where secrets are stored. Defaults to $XDG_CONFIG_HOME/wassette/secrets
+        #[arg(long)]
+        secrets_dir: Option<PathBuf>,
+    },
+    /// Delete secrets for a component.
+    Delete {
+        /// Component ID to delete secrets from
+        component_id: String,
+        /// Keys to delete
+        #[arg(required = true)]
+        keys: Vec<String>,
+        /// Directory where plugins are stored. Defaults to $XDG_DATA_HOME/wassette/components
+        #[arg(long)]
+        plugin_dir: Option<PathBuf>,
+        /// Directory where secrets are stored. Defaults to $XDG_CONFIG_HOME/wassette/secrets
+        #[arg(long)]
+        secrets_dir: Option<PathBuf>,
     },
 }

@@ -7,6 +7,7 @@ license.workspace = true
 [dependencies]
 anyhow = { workspace = true }
 component2json = { path = "../component2json" }
+etcetera = { workspace = true }
 futures = { workspace = true }
 http = "1.0"
 hyper = { version = "1.0", features = ["client"] }
