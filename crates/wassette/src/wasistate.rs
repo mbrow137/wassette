@@ -734,7 +734,8 @@ permissions:
       memory: "512Mi"
 "#;
         let policy = PolicyParser::parse_str(yaml_content).unwrap();
-        let template = create_wasi_state_template_from_policy(&policy, plugin_dir).unwrap();
+        let env_vars = HashMap::new(); // Empty environment for test
+        let template = create_wasi_state_template_from_policy(&policy, plugin_dir, &env_vars).unwrap();
 
         assert_eq!(template.memory_limit, Some(512 * 1024 * 1024));
         assert!(template.store_limits.is_some());
@@ -761,7 +762,8 @@ permissions:
         assert_eq!(memory_limit, Some(1024 * 1024 * 1024)); // 1 GiB in bytes
 
         // Test that WASI state template is created with memory limit
-        let template = create_wasi_state_template_from_policy(&policy, plugin_dir).unwrap();
+        let env_vars = HashMap::new(); // Empty environment for test
+        let template = create_wasi_state_template_from_policy(&policy, plugin_dir, &env_vars).unwrap();
         assert_eq!(template.memory_limit, Some(1024 * 1024 * 1024));
         assert!(template.store_limits.is_some());
 
