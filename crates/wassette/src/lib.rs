@@ -315,10 +315,7 @@ impl LifecycleManager {
 
         let component = Component::new(&self.engine, wasm_bytes).map_err(|e| anyhow::anyhow!("Failed to compile component from path: {}. Error: {}. Please ensure the file is a valid WebAssembly component.", downloaded_resource.as_ref().display(), e))?;
         // Pre-instantiate the component
-        let instance_pre = self
-            .linker
-            .instantiate_pre(&component)
-            .context("failed to instantiate component")?;
+        let instance_pre = self.linker.instantiate_pre(&component)?;
         let id = downloaded_resource.id()?;
         let tool_metadata = component_exports_to_tools(&component, &self.engine, true);
 
@@ -526,11 +523,7 @@ impl LifecycleManager {
             });
         }
 
-        let instance = component
-            .instance_pre
-            .instantiate_async(&mut store)
-            .await
-            .context("Failed to instantiate component")?;
+        let instance = component.instance_pre.instantiate_async(&mut store).await?;
 
         // Use the new function identifier lookup instead of dot-splitting
         let function_id = self
@@ -710,9 +703,7 @@ async fn load_component_from_entry(
         .map(String::from)
         .context("wasm file didn't have a valid file name")?;
     info!(component_id = %name, elapsed = ?start_time.elapsed(), "component loaded");
-    let instance_pre = linker
-        .instantiate_pre(&component)
-        .context("failed to instantiate component")?;
+    let instance_pre = linker.instantiate_pre(&component)?;
     Ok(Some((
         ComponentInstance {
             component: Arc::new(component),

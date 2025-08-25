@@ -295,10 +295,23 @@ impl crate::LifecycleManager {
                 })
             }
             "resource" => {
-                let memory = details
-                    .get("memory")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| anyhow!("Missing 'memory' field for resource permission"))?;
+                // Handle both direct memory field and nested resources.limits.memory structure
+                let memory = if let Some(memory_str) =
+                    details.get("memory").and_then(|v| v.as_str())
+                {
+                    // Direct memory field (for backward compatibility or direct API calls)
+                    memory_str
+                } else if let Some(memory_str) = details
+                    .get("resources")
+                    .and_then(|r| r.get("limits"))
+                    .and_then(|l| l.get("memory"))
+                    .and_then(|m| m.as_str())
+                {
+                    // Nested structure from CLI (resources.limits.memory)
+                    memory_str
+                } else {
+                    return Err(anyhow!("Missing 'memory' field for resource permission. Expected either 'memory' or 'resources.limits.memory'"));
+                };
 
                 // Create structured resource limits instead of hardcoded JSON
                 let resource_limits = policy::ResourceLimits {
@@ -453,13 +466,27 @@ impl crate::LifecycleManager {
         policy: &mut PolicyDocument,
         details: serde_json::Value,
     ) -> Result<()> {
-        // Extract the memory limit from the details
-        let memory_str = details
+        // Extract the memory limit from the details - handle both original CLI format and converted ResourceLimits format
+        let memory_str = if let Some(memory_str) = details
             .get("resources")
             .and_then(|r| r.get("limits"))
             .and_then(|l| l.get("memory"))
             .and_then(|m| m.as_str())
-            .ok_or_else(|| anyhow!("Invalid resource permission format"))?;
+        {
+            // Original CLI format: {"resources": {"limits": {"memory": "512Mi"}}}
+            memory_str
+        } else if let Some(memory_str) = details
+            .get("limits")
+            .and_then(|l| l.get("memory"))
+            .and_then(|m| m.as_str())
+        {
+            // Converted ResourceLimits format: {"limits": {"memory": "512Mi"}}
+            memory_str
+        } else {
+            return Err(anyhow!(
+                "Invalid resource permission format: missing memory field"
+            ));
+        };
 
         // Initialize resources if not present
         let resources = policy

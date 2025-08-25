@@ -33,6 +33,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - `wassette permission grant storage <component_id> <uri> --access read,write` - Grant storage permissions
   - `wassette permission grant network <component_id> <host>` - Grant network permissions  
   - `wassette permission grant environment-variable <component_id> <key>` - Grant environment variable permissions
+  - `wassette permission grant memory <component_id> <limit>` - Grant memory resource permissions
   - `wassette permission revoke storage <component_id> <uri>` - Revoke storage permissions
   - `wassette permission revoke network <component_id> <host>` - Revoke network permissions
   - `wassette permission revoke environment-variable <component_id> <key>` - Revoke environment variable permissions

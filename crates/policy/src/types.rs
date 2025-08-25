@@ -262,10 +262,6 @@ impl CpuLimit {
 }
 
 impl MemoryLimit {
-    // Memory limit bounds: minimum 64KB, maximum 64GB (reasonable for WASM components)
-    const MIN_MEMORY_BYTES: u64 = 64 * 1024; // 64KB
-    const MAX_MEMORY_BYTES: u64 = 64u64 * 1024 * 1024 * 1024; // 64GB
-
     /// Validate and convert memory limit to bytes
     pub fn to_bytes(&self) -> PolicyResult<u64> {
         let bytes = match self {
@@ -308,22 +304,6 @@ impl MemoryLimit {
                     .ok_or_else(|| anyhow::anyhow!("Memory value too large: {}", n))?
             }
         };
-
-        // Validate bounds
-        if bytes < Self::MIN_MEMORY_BYTES {
-            bail!(
-                "Memory limit {} bytes is below minimum {} KB",
-                bytes,
-                Self::MIN_MEMORY_BYTES / 1024
-            );
-        }
-        if bytes > Self::MAX_MEMORY_BYTES {
-            bail!(
-                "Memory limit {} bytes exceeds maximum {} GB",
-                bytes,
-                Self::MAX_MEMORY_BYTES / (1024 * 1024 * 1024)
-            );
-        }
 
         Ok(bytes)
     }
