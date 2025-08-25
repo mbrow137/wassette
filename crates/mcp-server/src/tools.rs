@@ -858,7 +858,7 @@ mod tests {
     #[test]
     fn test_get_builtin_tools() {
         let tools = get_builtin_tools();
-        assert_eq!(tools.len(), 13);
+        assert_eq!(tools.len(), 11);
         assert!(tools.iter().any(|t| t.name == "load-component"));
         assert!(tools.iter().any(|t| t.name == "unload-component"));
         assert!(tools.iter().any(|t| t.name == "list-components"));
