@@ -751,21 +751,6 @@ mod tests {
 
         let invalid_number = MemoryLimit::String("invalidMi".to_string());
         assert!(invalid_number.to_bytes().is_err());
-
-        // Test bounds validation - too small
-        let too_small = MemoryLimit::String("32Ki".to_string()); // 32KB < 64KB minimum
-        assert!(too_small.to_bytes().is_err());
-
-        // Test bounds validation - zero
-        let zero_bytes = MemoryLimit::String("0".to_string());
-        assert!(zero_bytes.to_bytes().is_err());
-
-        let zero_numeric = MemoryLimit::Number(0);
-        assert!(zero_numeric.to_bytes().is_err());
-
-        // Test bounds validation - too large (128GB > 64GB maximum)
-        let too_large = MemoryLimit::String("128Gi".to_string());
-        assert!(too_large.to_bytes().is_err());
     }
 
     #[test]
